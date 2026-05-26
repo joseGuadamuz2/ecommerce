@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getProductById } from '../services/productService'
-import { ArrowLeft } from 'lucide-react'
+import { getProductById, getSettings } from '../services/productService'
+import { ArrowLeft, MessageCircle } from 'lucide-react'
 
 export default function ProductDetail() {
   const { id } = useParams()
@@ -9,19 +9,47 @@ export default function ProductDetail() {
   const [product, setProduct] = useState<any>(null)
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [whatsappBase, setWhatsappBase] = useState('')
 
   useEffect(() => {
     if (!id) return
-    getProductById(id).then(p => {
+
+    Promise.all([
+      getProductById(id),
+      getSettings(),
+    ]).then(([p, settings]) => {
       setProduct(p)
       const main = p.product_images?.find((i: any) => i.is_main) || p.product_images?.[0]
       setSelectedImage(main?.url || null)
+
+      const code = settings?.whatsapp_country_code || '506'
+      const number = settings?.whatsapp_number?.replace(/\s/g, '') || ''
+      setWhatsappBase(`${code}${number}`)
+
       setLoading(false)
     })
   }, [id])
 
+  const handleWhatsApp = () => {
+    if (!whatsappBase || !product) return
+    const productUrl = `${window.location.origin}/producto/${product.id}`
+    const msg = encodeURIComponent(
+      `Hola! Me interesa este producto:\n` +
+      `*${product.name}*\n` +
+      `Precio: ₡${product.price.toLocaleString()}\n` +
+      `Código: ${product.id.slice(0, 8).toUpperCase()}\n` +
+      `Ver producto: ${productUrl}`
+    )
+    window.open(`https://wa.me/${whatsappBase}?text=${msg}`, '_blank')
+  }
+
   if (loading) return <p style={{ padding: '2rem' }}>Cargando...</p>
   if (!product) return <p style={{ padding: '2rem' }}>Producto no encontrado.</p>
+
+  // Ordenar imágenes: principal primero
+  const sortedImages = [...(product.product_images || [])].sort(
+    (a: any, b: any) => (b.is_main ? 1 : 0) - (a.is_main ? 1 : 0)
+  )
 
   return (
     <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1.5rem' }}>
@@ -38,9 +66,9 @@ export default function ProductDetail() {
               : <span style={{ fontSize: '4rem' }}>👕</span>
             }
           </div>
-          {product.product_images?.length > 1 && (
+          {sortedImages.length > 1 && (
             <div style={styles.thumbs}>
-              {product.product_images.map((img: any) => (
+              {sortedImages.map((img: any) => (
                 <img
                   key={img.id}
                   src={img.url}
@@ -51,6 +79,7 @@ export default function ProductDetail() {
                     border: selectedImage === img.url
                       ? '2px solid var(--accent)'
                       : '2px solid transparent',
+                    opacity: selectedImage === img.url ? 1 : 0.7,
                   }}
                 />
               ))}
@@ -60,6 +89,11 @@ export default function ProductDetail() {
 
         {/* Info */}
         <div style={styles.info}>
+          {/* Código de producto */}
+          <p style={styles.productCode}>
+            Código: <strong>{product.id.slice(0, 8).toUpperCase()}</strong>
+          </p>
+
           <h1 style={styles.name}>{product.name}</h1>
           <p style={styles.price}>₡{product.price.toLocaleString()}</p>
 
@@ -95,6 +129,20 @@ export default function ProductDetail() {
           }}>
             {product.stock > 0 ? `✓ ${product.stock} unidades disponibles` : '✗ Agotado'}
           </p>
+
+          {/* Botón WhatsApp */}
+          <button
+            onClick={handleWhatsApp}
+            disabled={product.stock === 0 || !whatsappBase}
+            style={{
+              ...styles.whatsappBtn,
+              opacity: product.stock === 0 || !whatsappBase ? 0.5 : 1,
+              cursor: product.stock === 0 || !whatsappBase ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <MessageCircle size={20} />
+            {product.stock === 0 ? 'Agotado' : 'Pedir por WhatsApp'}
+          </button>
         </div>
       </div>
     </div>
@@ -127,8 +175,20 @@ const styles: Record<string, React.CSSProperties> = {
   thumb: {
     width: '64px', height: '64px', borderRadius: '8px',
     objectFit: 'cover', cursor: 'pointer',
+    transition: 'opacity 0.15s, border 0.15s',
   },
   info: { display: 'flex', flexDirection: 'column', gap: '1rem' },
+  productCode: {
+    fontSize: '0.78rem',
+    color: 'var(--text-muted)',
+    margin: 0,
+    fontFamily: 'monospace',
+    background: 'var(--bg-main)',
+    border: '1px solid var(--border-color)',
+    borderRadius: '6px',
+    padding: '4px 10px',
+    alignSelf: 'flex-start',
+  },
   name: { fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 },
   price: { fontSize: '1.4rem', fontWeight: 800, color: 'var(--accent)', margin: 0 },
   description: { color: 'var(--text-muted)', lineHeight: '1.6', margin: 0 },
@@ -142,4 +202,20 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid var(--border-color)',
   },
   stock: { fontWeight: 700, fontSize: '0.9rem' },
+  whatsappBtn: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.6rem',
+    padding: '0.9rem 1.5rem',
+    background: '#25d366',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '12px',
+    fontSize: '1rem',
+    fontWeight: 700,
+    boxShadow: '0 4px 14px rgba(37, 211, 102, 0.35)',
+    marginTop: '0.5rem',
+    transition: 'opacity 0.2s',
+  },
 }

@@ -11,19 +11,25 @@ export default function Catalog() {
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
-  const [filterStock, setFilterStock] = useState('all') // 'all', 'available', 'outOfStock'
+  const [filterStock, setFilterStock] = useState('all')
   const [currentPage, setCurrentPage] = useState(1)
+  const [whatsappBase, setWhatsappBase] = useState('')
   const PRODUCTS_PER_PAGE = 8
   const navigate = useNavigate()
 
   useEffect(() => {
-    getProducts()
-      .then(setProducts)
+    Promise.all([getProducts(), getSettings()])
+      .then(([prods, settings]) => {
+        setProducts(prods)
+        const code = settings?.whatsapp_country_code || '506'
+        const number = settings?.whatsapp_number?.replace(/\s/g, '') || ''
+        setWhatsappBase(`${code}${number}`)
+      })
       .finally(() => setLoading(false))
   }, [])
 
   const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (p.description && p.description.toLowerCase().includes(searchTerm.toLowerCase()))
     const matchesStock = filterStock === 'all' ? true :
                          filterStock === 'available' ? p.stock > 0 : p.stock === 0
@@ -83,10 +89,7 @@ export default function Catalog() {
               <FileDown size={15} />
               <span>{exporting ? 'Generando...' : 'PDF'}</span>
             </button>
-            <button
-              style={styles.adminBtn}
-              onClick={() => navigate('/admin')}
-            >
+            <button style={styles.adminBtn} onClick={() => navigate('/admin')}>
               <Settings size={15} />
               <span>Admin</span>
             </button>
@@ -175,7 +178,7 @@ export default function Catalog() {
           <>
             <div style={styles.grid}>
               {paginatedProducts.map(p => (
-                <ProductCard key={p.id} product={p} />
+                <ProductCard key={p.id} product={p} whatsappBase={whatsappBase} />
               ))}
             </div>
 

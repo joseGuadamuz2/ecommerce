@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import Swal from 'sweetalert2'
 import AdminLayout from '../components/AdminLayout'
 import { createProduct, getProductById, updateProduct, uploadImage, deleteProductImage, setMainImage } from '../services/productService'
 import { processImage } from '../hooks/useImageProcessor'
@@ -33,11 +34,8 @@ export default function ProductForm() {
     colors: [] as string[],
   })
 
-  // Para edición: imágenes ya guardadas
   const [savedImages, setSavedImages] = useState<any[]>([])
   const [dragIndex, setDragIndex] = useState<number | null>(null)
-
-  // Responsive helper
   const [isMobile, setIsMobile] = useState<boolean>(false)
 
   useEffect(() => {
@@ -59,7 +57,6 @@ export default function ProductForm() {
           sizes: product.sizes || [],
           colors: product.colors || [],
         })
-        // Ordenar: principal primero
         const imgs = [...(product.product_images || [])]
         imgs.sort((a: any, b: any) => (b.is_main ? 1 : 0) - (a.is_main ? 1 : 0))
         setSavedImages(imgs)
@@ -68,22 +65,17 @@ export default function ProductForm() {
     }
   }, [id])
 
-  // ── Drag & drop handlers para imágenes guardadas ──
+  // ── Drag & drop ──
   const handleDragStart = (index: number) => setDragIndex(index)
 
   const handleDrop = async (dropIndex: number) => {
     if (dragIndex === null || dragIndex === dropIndex) return
-
     const reordered = [...savedImages]
     const [moved] = reordered.splice(dragIndex, 1)
     reordered.splice(dropIndex, 0, moved)
-
-    // La primera siempre es la principal
     const updated = reordered.map((img, i) => ({ ...img, is_main: i === 0 }))
     setSavedImages(updated)
     setDragIndex(null)
-
-    // Persistir en DB: marcar la nueva primera como principal
     if (id && updated[0]) {
       try {
         await setMainImage(updated[0].id, id)
@@ -96,22 +88,38 @@ export default function ProductForm() {
   const handleDragOver = (e: React.DragEvent) => e.preventDefault()
 
   const handleRemoveSaved = async (imageId: string, url: string) => {
+    const result = await Swal.fire({
+      title: '¿Eliminar imagen?',
+      text: 'Esta acción no se puede deshacer.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#6366f1',
+    })
+
+    if (!result.isConfirmed) return
+
     try {
       await deleteProductImage(imageId, url)
       setSavedImages(prev => {
         const updated = prev.filter(img => img.id !== imageId)
-        // Si se eliminó la principal, la nueva primera toma el puesto
         return updated.map((img, i) => ({ ...img, is_main: i === 0 }))
       })
     } catch {
-      setError('No se pudo eliminar la imagen')
+      Swal.fire({
+        title: 'Error',
+        text: 'No se pudo eliminar la imagen.',
+        icon: 'error',
+        confirmButtonColor: '#6366f1',
+      })
     }
   }
 
   const toggleItem = (list: string[], item: string) =>
     list.includes(item) ? list.filter(i => i !== item) : [...list, item]
 
-  // Agregar imágenes locales antes de guardar
   const handleAddImages = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     const newImages: LocalImage[] = files
@@ -123,7 +131,14 @@ export default function ProductForm() {
       }))
 
     if (files.some(f => f.size > 20 * 1024 * 1024)) {
-      setError('Algunas imágenes superan 20MB y fueron ignoradas')
+      Swal.fire({
+        title: 'Imágenes ignoradas',
+        text: 'Algunas imágenes superan 20MB y fueron ignoradas.',
+        icon: 'warning',
+        confirmButtonColor: '#6366f1',
+        timer: 3000,
+        showConfirmButton: false,
+      })
     } else {
       setError('')
     }
@@ -172,7 +187,6 @@ export default function ProductForm() {
         productId = created.id
       }
 
-      // Subir imágenes nuevas (recortadas en cuadrado y comprimidas)
       for (const img of localImages) {
         const processed = await processImage(img.file, {
           maxSize: 1200,
@@ -185,9 +199,25 @@ export default function ProductForm() {
         )
       }
 
+      await Swal.fire({
+        title: '¡Guardado!',
+        text: isEditing
+          ? 'Producto actualizado correctamente.'
+          : 'Producto creado correctamente.',
+        icon: 'success',
+        timer: 1800,
+        showConfirmButton: false,
+        confirmButtonColor: '#6366f1',
+      })
+
       navigate('/admin/productos')
     } catch (err: any) {
-      setError('Error al guardar el producto')
+      Swal.fire({
+        title: 'Error',
+        text: 'No se pudo guardar el producto. Intentá de nuevo.',
+        icon: 'error',
+        confirmButtonColor: '#6366f1',
+      })
     } finally {
       setSaving(false)
     }
@@ -223,7 +253,7 @@ export default function ProductForm() {
             <span style={styles.uploadHint}>PNG, JPG hasta 20MB · Se recortan en cuadrado y comprimen automáticamente</span>
           </label>
 
-          {/* Previews locales (imágenes nuevas aún no guardadas) */}
+          {/* Previews locales */}
           {localImages.length > 0 && (
             <div style={styles.grid}>
               {localImages.map((img, i) => (
@@ -282,9 +312,7 @@ export default function ProductForm() {
                   >
                     <img src={img.url} alt="" style={styles.img} />
                     {index === 0 && <div style={styles.mainBadge}>Principal</div>}
-                    {index !== 0 && (
-                      <div style={styles.orderBadge}>{index + 1}</div>
-                    )}
+                    {index !== 0 && <div style={styles.orderBadge}>{index + 1}</div>}
                     <div style={styles.imgActions}>
                       <button
                         type="button"

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import Swal from 'sweetalert2'
 import AdminLayout from '../components/AdminLayout'
 import { getProducts, deleteProduct, getSettings } from '../services/productService'
 import type { Product } from '../types/product'
@@ -27,9 +28,30 @@ export default function ProductList() {
   useEffect(() => { fetchProducts() }, [])
 
   const handleDelete = async (id: string) => {
-    if (!confirm('¿Eliminar este producto?')) return
+    const result = await Swal.fire({
+      title: '¿Eliminar producto?',
+      text: 'Esta acción no se puede deshacer.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, eliminar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#6366f1',
+    })
+
+    if (!result.isConfirmed) return
+
     await deleteProduct(id)
     fetchProducts()
+
+    Swal.fire({
+      title: '¡Eliminado!',
+      text: 'El producto fue eliminado correctamente.',
+      icon: 'success',
+      timer: 2000,
+      showConfirmButton: false,
+      confirmButtonColor: '#6366f1',
+    })
   }
 
   const handleExportPDF = async () => {
@@ -40,6 +62,12 @@ export default function ProductList() {
       await generateCatalogPDF(products as any, settings, storeUrl)
     } catch (err) {
       console.error('Error generando PDF:', err)
+      Swal.fire({
+        title: 'Error',
+        text: 'No se pudo generar el PDF. Intentá de nuevo.',
+        icon: 'error',
+        confirmButtonColor: '#6366f1',
+      })
     } finally {
       setExporting(false)
     }
@@ -144,7 +172,6 @@ export default function ProductList() {
                 const img = p.product_images?.find((i: any) => i.is_main) || p.product_images?.[0]
                 return (
                   <tr key={p.id} style={styles.tr}>
-                    {/* Celda con miniatura + nombre */}
                     <td style={styles.td}>
                       <div style={styles.productCell}>
                         <div style={styles.thumbBox}>
@@ -302,8 +329,6 @@ const styles: Record<string, React.CSSProperties> = {
     transition: 'background 0.15s',
   },
   td: { padding: '0.85rem 1.25rem', fontSize: '0.92rem', color: 'var(--text-main)' },
-
-  // Celda de producto con miniatura
   productCell: {
     display: 'flex',
     alignItems: 'center',
@@ -331,7 +356,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.92rem',
     color: 'var(--text-main)',
   },
-
   stockBadge: {
     display: 'inline-block',
     fontSize: '0.75rem',

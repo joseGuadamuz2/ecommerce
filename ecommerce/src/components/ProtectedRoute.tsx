@@ -7,7 +7,15 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   const [authenticated, setAuthenticated] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data, error }) => {
+      // Si el refresh token es inválido, limpiar sesión y redirigir al login
+      if (error?.message?.toLowerCase().includes('refresh token')) {
+        supabase.auth.signOut().then(() => {
+          setAuthenticated(false)
+          setLoading(false)
+        })
+        return
+      }
       setAuthenticated(!!data.session)
       setLoading(false)
     })

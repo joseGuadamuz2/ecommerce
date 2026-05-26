@@ -1,276 +1,387 @@
-import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { getProductById, getSettings } from '../services/productService'
-import { ArrowLeft, Shirt } from 'lucide-react'
-import { useIsMobile } from '../hooks/useIsMobile'
+import { useState, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import AdminLayout from '../components/AdminLayout'
+import { createProduct, getProductById, updateProduct, uploadImage, deleteProductImage, setMainImage } from '../services/productService'
+import { processImage } from '../hooks/useImageProcessor'
+import { ArrowLeft, Save, Upload, Trash2, Star } from 'lucide-react'
 
-export default function ProductDetail() {
+const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL']
+const COLORS = ['Blanco', 'Negro', 'Azul', 'Rojo', 'Verde', 'Gris', 'Amarillo']
+
+interface LocalImage {
+  file: File
+  preview: string
+  isMain: boolean
+}
+
+export default function ProductForm() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const isMobile = useIsMobile()
-  const [product, setProduct] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [selectedImg, setSelectedImg] = useState('')
-  const [selectedSize, setSelectedSize] = useState('')
-  const [selectedColor, setSelectedColor] = useState('')
-  const [settings, setSettings] = useState<any>(null)
+  const isEditing = !!id
+
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [localImages, setLocalImages] = useState<LocalImage[]>([])
+
+  const [form, setForm] = useState({
+    name: '',
+    description: '',
+    price: '',
+    stock: '',
+    sizes: [] as string[],
+    colors: [] as string[],
+  })
+
+  // Para edición: imágenes ya guardadas
+  const [savedImages, setSavedImages] = useState<any[]>([])
+
+  // Responsive helper
+  const [isMobile, setIsMobile] = useState<boolean>(false)
 
   useEffect(() => {
-    if (id) {
-      getProductById(id).then(p => {
-        setProduct(p)
-        const main = p.product_images?.find((i: any) => i.is_main)
-        setSelectedImg(main?.url || p.product_images?.[0]?.url || '')
+    const check = () => setIsMobile(window.innerWidth <= 600)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
+  useEffect(() => {
+    if (isEditing) {
+      setLoading(true)
+      getProductById(id).then(product => {
+        setForm({
+          name: product.name,
+          description: product.description || '',
+          price: String(product.price),
+          stock: String(product.stock),
+          sizes: product.sizes || [],
+          colors: product.colors || [],
+        })
+        setSavedImages(product.product_images || [])
         setLoading(false)
       })
-      getSettings().then(setSettings)
     }
   }, [id])
 
-  const handleWhatsApp = () => {
-    if (!settings?.whatsapp_number) return
-    const lines = [
-      `¡Hola! Me interesa encargar:`,
-      ``,
-      `👕 *${product.name}*`,
-      `💰 Precio: ₡${product.price.toLocaleString()}`,
-      selectedSize ? `📏 Talla: ${selectedSize}` : '',
-      selectedColor ? `🎨 Color: ${selectedColor}` : '',
-      ``,
-      `¿Está disponible?`,
-    ].filter(Boolean).join('\n')
-
-    const encoded = encodeURIComponent(lines)
-    const phone = `${settings.whatsapp_country_code}${settings.whatsapp_number.replace(/\s/g, '')}`
-    window.open(`https://wa.me/${phone}?text=${encoded}`, '_blank')
+  const handleRemoveSaved = async (imageId: string, url: string) => {
+    try {
+      await deleteProductImage(imageId, url)
+      setSavedImages(prev => prev.filter(img => img.id !== imageId))
+    } catch {
+      setError('No se pudo eliminar la imagen')
+    }
   }
 
-  if (loading) return <div style={styles.loading}>Cargando...</div>
-  if (!product) return <div style={styles.loading}>Producto no encontrado</div>
+  const handleSetMainSaved = async (imageId: string) => {
+    if (!id) return
+    try {
+      await setMainImage(imageId, id)
+      setSavedImages(prev => prev.map(img => ({ ...img, is_main: img.id === imageId })))
+    } catch {
+      setError('No se pudo actualizar la imagen principal')
+    }
+  }
+
+  const toggleItem = (list: string[], item: string) =>
+    list.includes(item) ? list.filter(i => i !== item) : [...list, item]
+
+  // Agregar imágenes locales antes de guardar
+  const handleAddImages = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    const newImages: LocalImage[] = files
+      .filter(f => f.size <= 20 * 1024 * 1024)
+      .map((file, i) => ({
+        file,
+        preview: URL.createObjectURL(file),
+        isMain: localImages.length === 0 && i === 0,
+      }))
+
+    if (files.some(f => f.size > 20 * 1024 * 1024)) {
+      setError('Algunas imágenes superan 20MB y fueron ignoradas')
+    } else {
+      setError('')
+    }
+
+    setLocalImages(prev => [...prev, ...newImages])
+    e.target.value = ''
+  }
+
+  const handleRemoveLocal = (index: number) => {
+    setLocalImages(prev => {
+      const updated = prev.filter((_, i) => i !== index)
+      // Si se eliminó la principal y quedan imágenes, la primera pasa a ser principal
+      if (prev[index].isMain && updated.length > 0) {
+        updated[0].isMain = true
+      }
+      return updated
+    })
+  }
+
+  const handleSetMainLocal = (index: number) => {
+    setLocalImages(prev =>
+      prev.map((img, i) => ({ ...img, isMain: i === index }))
+    )
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSaving(true)
+    setError('')
+
+    try {
+      const payload = {
+        name: form.name,
+        description: form.description,
+        price: parseFloat(form.price),
+        stock: parseInt(form.stock),
+        sizes: form.sizes,
+        colors: form.colors,
+      }
+
+      let productId = id
+
+      if (isEditing) {
+        await updateProduct(id, payload)
+      } else {
+        const created = await createProduct(payload)
+        productId = created.id
+      }
+
+      // Subir imágenes nuevas (recortadas en cuadrado y comprimidas)
+      for (const img of localImages) {
+        const processed = await processImage(img.file, {
+          maxSize: 1200,
+          quality: 0.82,
+          format: 'image/webp',
+        })
+        const url = await uploadImage(processed, productId!)
+        await import('../services/productService').then(m =>
+          m.saveProductImage(productId!, url, img.isMain)
+        )
+      }
+
+      navigate('/admin/productos')
+    } catch (err: any) {
+      setError('Error al guardar el producto')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <AdminLayout><p>Cargando...</p></AdminLayout>
 
   return (
-    <div style={styles.page}>
-      {/* Header */}
-      <header style={styles.header}>
-        <div style={styles.headerInner}>
-          <button style={styles.backBtn} onClick={() => navigate('/')}>
-            <ArrowLeft size={16} />
-            {isMobile ? 'Volver' : 'Volver al catálogo'}
-          </button>
-          <div style={styles.logo}>
-            <Shirt size={20} color="#1a1a2e" />
-            {!isMobile && <span style={styles.logoText}>CamisasShop</span>}
-          </div>
-        </div>
-      </header>
+    <AdminLayout>
+      <div style={styles.header}>
+        <button style={styles.backBtn} onClick={() => navigate('/admin/productos')}>
+          <ArrowLeft size={18} /> Volver
+        </button>
+        <h1 style={styles.title}>{isEditing ? 'Editar producto' : 'Nuevo producto'}</h1>
+      </div>
 
-      <main style={styles.main}>
-        <div style={{
-          ...styles.grid,
-          gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-          gap: isMobile ? '1.5rem' : '3rem',
-        }}>
+      <form onSubmit={handleSubmit} style={styles.form}>
 
-          {/* ── Galería ── */}
-          <div style={styles.gallery}>
-            {/* Imagen principal */}
-            <div style={{
-              ...styles.mainImgWrapper,
-              aspectRatio: isMobile ? '4/3' : '3/4',
-              borderRadius: isMobile ? '10px' : '14px',
-            }}>
-              {selectedImg ? (
-                <img src={selectedImg} alt={product.name} style={styles.mainImg} />
-              ) : (
-                <div style={styles.noImg}>Sin imagen</div>
-              )}
+        {/* ── SECCIÓN IMÁGENES ── */}
+        <div style={styles.section}>
+          <h2 style={styles.sectionTitle}>🖼️ Imágenes</h2>
+
+          <label style={styles.uploadArea}>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleAddImages}
+              style={{ display: 'none' }}
+            />
+            <Upload size={26} color="#888" />
+            <p style={styles.uploadText}>Hacé click para agregar imágenes</p>
+            <span style={styles.uploadHint}>PNG, JPG hasta 20MB · Se recortan en cuadrado y comprimen automáticamente</span>
+          </label>
+
+          {/* Previews locales */}
+          {localImages.length > 0 && (
+            <div style={styles.grid}>
+              {localImages.map((img, i) => (
+                <div key={i} style={styles.imgCard}>
+                  <img src={img.preview} alt="" style={styles.img} />
+                  {img.isMain && <div style={styles.mainBadge}>Principal</div>}
+                  <div style={styles.imgActions}>
+                    {!img.isMain && (
+                      <button
+                        type="button"
+                        style={styles.starBtn}
+                        onClick={() => handleSetMainLocal(i)}
+                        title="Marcar como principal"
+                      >
+                        <Star size={14} />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      style={styles.deleteImgBtn}
+                      onClick={() => handleRemoveLocal(i)}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
+          )}
 
-            {/* Miniaturas */}
-            {product.product_images?.length > 1 && (
-              <div style={styles.thumbs}>
-                {product.product_images.map((img: any) => (
-                  <img
-                    key={img.id}
-                    src={img.url}
-                    alt=""
-                    onClick={() => setSelectedImg(img.url)}
-                    style={{
-                      ...styles.thumb,
-                      border: selectedImg === img.url
-                        ? '2px solid #1a1a2e'
-                        : '2px solid transparent',
-                      width: isMobile ? '60px' : '72px',
-                      height: isMobile ? '60px' : '72px',
-                    }}
-                  />
+          {/* Imágenes ya guardadas (modo edición) */}
+          {savedImages.length > 0 && (
+            <>
+              <p style={{ fontSize: '0.85rem', color: '#888', margin: '0.5rem 0' }}>
+                Imágenes actuales:
+              </p>
+              <div style={styles.grid}>
+                {savedImages.map(img => (
+                  <div key={img.id} style={styles.imgCard}>
+                    <img src={img.url} alt="" style={styles.img} />
+                    {img.is_main && <div style={styles.mainBadge}>Principal</div>}
+                    <div style={styles.imgActions}>
+                      {!img.is_main && (
+                        <button
+                          type="button"
+                          style={styles.starBtn}
+                          onClick={() => handleSetMainSaved(img.id)}
+                          title="Marcar como principal"
+                        >
+                          <Star size={14} />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        style={styles.deleteImgBtn}
+                        onClick={() => handleRemoveSaved(img.id, img.url)}
+                        title="Eliminar imagen"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
-            )}
+            </>
+          )}
+        </div>
+
+        {/* ── SECCIÓN INFO ── */}
+        <div style={styles.section}>
+          <h2 style={styles.sectionTitle}>📝 Información del producto</h2>
+
+          <div style={styles.field}>
+            <label style={styles.label}>Nombre *</label>
+            <input
+              style={styles.input}
+              value={form.name}
+              onChange={e => setForm({ ...form, name: e.target.value })}
+              required
+            />
           </div>
 
-          {/* ── Info ── */}
-          <div style={styles.info}>
-            <h1 style={{
-              ...styles.name,
-              fontSize: isMobile ? '1.5rem' : '2rem',
-            }}>
-              {product.name}
-            </h1>
+          <div style={styles.field}>
+            <label style={styles.label}>Descripción</label>
+            <textarea
+              style={{ ...styles.input, minHeight: '100px', resize: 'vertical' }}
+              value={form.description}
+              onChange={e => setForm({ ...form, description: e.target.value })}
+            />
+          </div>
 
-            <p style={{
-              ...styles.price,
-              fontSize: isMobile ? '1.35rem' : '1.75rem',
-            }}>
-              ₡{product.price.toLocaleString()}
-            </p>
+          <div style={{
+  ...styles.row,
+  flexDirection: isMobile ? 'column' : 'row',
+}}>
+  <div style={{ ...styles.field, flex: 1 }}>
+    <label style={styles.label}>Precio (₡) *</label>
+    <input
+      style={styles.input}
+      type="number"
+      min="0"
+      step="0.01"
+      value={form.price}
+      onChange={e => setForm({ ...form, price: e.target.value })}
+      required
+    />
+  </div>
+  <div style={{ ...styles.field, flex: 1 }}>
+    <label style={styles.label}>Stock *</label>
+    <input
+      style={styles.input}
+      type="number"
+      min="0"
+      value={form.stock}
+      onChange={e => setForm({ ...form, stock: e.target.value })}
+      required
+    />
+  </div>
+</div>
 
-            {product.description && (
-              <p style={styles.description}>{product.description}</p>
-            )}
-
-            {/* Tallas */}
-            {product.sizes?.length > 0 && (
-              <div style={styles.optionGroup}>
-                <label style={styles.optionLabel}>Talla Seleccionada: <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{selectedSize || 'Ninguna'}</span></label>
-                <div style={styles.optionRow}>
-                  {product.sizes.map((s: string) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setSelectedSize(s)}
-                      style={{
-                        ...styles.optionBtn,
-                        background: selectedSize === s ? 'var(--accent)' : '#fff',
-                        color: selectedSize === s ? '#fff' : 'var(--text-main)',
-                        borderColor: selectedSize === s ? 'var(--accent)' : 'var(--border-color)',
-                        boxShadow: selectedSize === s ? '0 4px 10px rgba(99, 102, 241, 0.2)' : 'none',
-                      }}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Colores */}
-            {product.colors?.length > 0 && (
-              <div style={styles.optionGroup}>
-                <label style={styles.optionLabel}>Color Seleccionado: <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{selectedColor || 'Ninguno'}</span></label>
-                <div style={styles.optionRow}>
-                  {product.colors.map((c: string) => {
-                    const hex = COLOR_MAP[c] || '#cccccc';
-                    const isSelected = selectedColor === c;
-                    return (
-                      <button
-                        key={c}
-                        type="button"
-                        onClick={() => setSelectedColor(c)}
-                        title={c}
-                        style={{
-                          ...styles.colorCircle,
-                          background: hex,
-                          border: isSelected ? '3px solid var(--accent)' : '1px solid #cbd5e1',
-                          outline: isSelected ? '2px solid rgba(99, 102, 241, 0.15)' : 'none',
-                          boxShadow: isSelected ? '0 0 12px rgba(99, 102, 241, 0.3)' : 'none',
-                        }}
-                      >
-                        {isSelected && (
-                          <span style={{
-                            color: c === 'Blanco' || c === 'Amarillo' ? '#0f172a' : '#fff',
-                            fontSize: '0.8rem',
-                            fontWeight: 'bold',
-                            lineHeight: 1,
-                          }}>✓</span>
-                        )}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Stock */}
-            <div style={styles.stockBox}>
-              <span style={{
-                width: '8px',
-                height: '8px',
-                borderRadius: '50%',
-                background: product.stock > 0 ? 'var(--success)' : 'var(--danger)',
-                display: 'inline-block',
-              }}></span>
-              <p style={{
-                ...styles.stock,
-                color: product.stock > 0 ? 'var(--success)' : 'var(--danger)',
-                fontWeight: 600,
-              }}>
-                {product.stock > 0
-                  ? `${product.stock} unidades disponibles`
-                  : 'Agotado'}
-              </p>
+          <div style={styles.field}>
+            <label style={styles.label}>Tallas disponibles</label>
+            <div style={styles.tagGroup}>
+              {SIZES.map(size => (
+                <button
+                  key={size}
+                  type="button"
+                  onClick={() => setForm({ ...form, sizes: toggleItem(form.sizes, size) })}
+                  style={{
+                    ...styles.tag,
+                    background: form.sizes.includes(size) ? 'var(--accent)' : '#f1f5f9',
+                    color: form.sizes.includes(size) ? '#fff' : 'var(--text-muted)',
+                    boxShadow: form.sizes.includes(size) ? '0 4px 10px rgba(99, 102, 241, 0.2)' : 'none',
+                    borderColor: form.sizes.includes(size) ? 'var(--accent)' : 'transparent',
+                  }}
+                >
+                  {size}
+                </button>
+              ))}
             </div>
+          </div>
 
-            {/* Botón WhatsApp */}
-            <button
-              style={{
-                ...styles.buyBtn,
-                opacity: !settings?.whatsapp_number ? 0.5 : 1,
-                cursor: !settings?.whatsapp_number ? 'not-allowed' : 'pointer',
-                padding: isMobile ? '0.9rem' : '0.85rem',
-                fontSize: isMobile ? '1rem' : '0.95rem',
-              }}
-              onClick={handleWhatsApp}
-              disabled={!settings?.whatsapp_number}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.73-1.455L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.825 1.451 5.436 0 9.86-4.37 9.864-9.799.002-2.63-1.023-5.101-2.885-6.968C16.574 1.97 14.101.947 11.5.947c-5.445 0-9.87 4.372-9.875 9.802-.002 1.798.48 3.55 1.4 5.102l-1.02 3.722 3.84-1.002zm11.366-7.44c-.333-.167-1.973-.974-2.28-1.086-.307-.113-.53-.168-.752.167-.222.334-.86 1.086-1.054 1.309-.195.223-.39.247-.723.08-1.558-.78-2.695-1.341-3.766-3.184-.282-.484.282-.449.808-1.503.088-.178.044-.333-.022-.467-.067-.134-.53-1.28-.726-1.751-.19-.46-.388-.396-.53-.404-.136-.008-.293-.01-.45-.01-.156 0-.41.059-.624.293-.214.234-.817.799-.817 1.95 0 1.15.836 2.26.952 2.42.115.158 1.644 2.512 3.985 3.52 1.83.788 2.5.88 3.398.75.524-.078 1.616-.66 1.843-1.298.226-.638.226-1.185.158-1.298-.067-.113-.247-.168-.58-.335z"/>
-              </svg>
-              <span>Comprar por WhatsApp</span>
-            </button>
-
-            {!settings?.whatsapp_number && (
-              <p style={styles.noPhone}>
-                El administrador aún no configuró el número de WhatsApp
-              </p>
-            )}
+          <div style={styles.field}>
+            <label style={styles.label}>Colores disponibles</label>
+            <div style={styles.tagGroup}>
+              {COLORS.map(color => (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => setForm({ ...form, colors: toggleItem(form.colors, color) })}
+                  style={{
+                    ...styles.tag,
+                    background: form.colors.includes(color) ? 'var(--accent)' : '#f1f5f9',
+                    color: form.colors.includes(color) ? '#fff' : 'var(--text-muted)',
+                    boxShadow: form.colors.includes(color) ? '0 4px 10px rgba(99, 102, 241, 0.2)' : 'none',
+                    borderColor: form.colors.includes(color) ? 'var(--accent)' : 'transparent',
+                  }}
+                >
+                  {color}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-      </main>
-    </div>
+
+        {error && <p style={styles.error}>{error}</p>}
+
+        <button type="submit" style={styles.saveBtn} disabled={saving}>
+          <Save size={18} />
+          {saving ? 'Guardando...' : 'Guardar producto'}
+        </button>
+      </form>
+    </AdminLayout>
   )
 }
 
-const COLOR_MAP: Record<string, string> = {
-  'Blanco': '#ffffff',
-  'Negro': '#0f172a',
-  'Azul': '#2563eb',
-  'Rojo': '#dc2626',
-  'Verde': '#16a34a',
-  'Gris': '#64748b',
-  'Amarillo': '#facc15',
-}
-
 const styles: Record<string, React.CSSProperties> = {
-  page: { minHeight: '100vh', background: 'var(--bg-main)' },
-  loading: { textAlign: 'center', padding: '6rem 2rem', color: 'var(--text-muted)', fontWeight: 500 },
   header: {
-    background: 'var(--glass-bg)',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
-    borderBottom: '1px solid var(--glass-border)',
-    position: 'sticky',
-    top: 0,
-    zIndex: 10,
-    boxShadow: '0 1px 10px rgba(15, 23, 42, 0.02)',
-  },
-  headerInner: {
-    maxWidth: '1200px',
-    margin: '0 auto',
-    padding: '0.85rem 1.5rem',
     display: 'flex',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: '1.25rem',
+    marginBottom: '2rem',
   },
   backBtn: {
     display: 'flex',
@@ -278,117 +389,181 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '0.45rem',
     background: '#fff',
     border: '1px solid var(--border-color)',
-    borderRadius: '10px',
-    padding: '0.5rem 0.95rem',
+    borderRadius: '8px',
+    padding: '0.5rem 0.9rem',
     cursor: 'pointer',
     fontSize: '0.85rem',
     fontWeight: 600,
     color: 'var(--text-muted)',
-    boxShadow: '0 2px 5px rgba(15, 23, 42, 0.02)',
+    boxShadow: '0 2px 5px rgba(15,23,42,0.02)',
   },
-  logo: { display: 'flex', alignItems: 'center', gap: '0.5rem' },
-  logoText: { fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)' },
-  main: {
-    maxWidth: '1100px',
-    margin: '0 auto',
-    padding: '2.5rem 1.5rem',
+  title: {
+    fontSize: '1.8rem',
+    fontWeight: 800,
+    color: 'var(--text-main)',
+    letterSpacing: '-0.5px',
+    margin: 0,
+  },
+  form: {
+    background: '#fff',
+    borderRadius: '16px',
+    padding: '2.5rem 2rem',
+    boxShadow: 'var(--card-shadow)',
+    maxWidth: '700px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '2.25rem',
+    border: '1px solid var(--border-color)',
+  },
+  section: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '1.25rem',
+  },
+  sectionTitle: {
+    fontSize: '1.05rem',
+    fontWeight: 800,
+    color: 'var(--text-main)',
+    margin: 0,
+    paddingBottom: '0.65rem',
+    borderBottom: '1px solid var(--border-color)',
+  },
+  uploadArea: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.5rem',
+    padding: '2.25rem',
+    border: '2px dashed var(--border-color)',
+    borderRadius: '12px',
+    cursor: 'pointer',
+    background: 'var(--bg-main)',
+    transition: 'all 0.25s',
+  },
+  uploadText: {
+    color: 'var(--text-main)',
+    fontSize: '0.92rem',
+    fontWeight: 600,
+    margin: 0,
+  },
+  uploadHint: {
+    color: 'var(--text-muted)',
+    fontSize: '0.78rem',
   },
   grid: {
     display: 'grid',
-    alignItems: 'start',
-    background: '#fff',
-    borderRadius: '20px',
-    padding: '2rem',
-    border: '1px solid var(--border-color)',
-    boxShadow: 'var(--card-shadow)',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
+    gap: '0.85rem',
   },
-  gallery: { display: 'flex', flexDirection: 'column', gap: '0.85rem' },
-  mainImgWrapper: {
-    width: '100%',
-    overflow: 'hidden',
-    background: '#f8fafc',
-    border: '1px solid var(--border-color)',
-  },
-  mainImg: {
-    width: '100%',
-    height: '100%',
-    objectFit: 'cover',
-    display: 'block',
-  },
-  noImg: {
-    width: '100%',
-    height: '100%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: 'var(--text-muted)',
-    fontWeight: 500,
-    background: '#f1f5f9',
-  },
-  thumbs: {
-    display: 'flex',
-    gap: '0.5rem',
-    flexWrap: 'wrap',
-  },
-  thumb: {
-    objectFit: 'cover',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    border: '2px solid transparent',
-    transition: 'all 0.2s',
-  },
-  info: { display: 'flex', flexDirection: 'column', gap: '1.25rem', paddingLeft: '0.5rem' },
-  name: { fontWeight: 800, color: 'var(--text-main)', margin: 0, letterSpacing: '-0.5px' },
-  price: { fontWeight: 800, color: 'var(--accent)', margin: 0 },
-  description: { color: 'var(--text-muted)', lineHeight: 1.6, margin: 0, fontSize: '0.95rem' },
-  optionGroup: { display: 'flex', flexDirection: 'column', gap: '0.6rem' },
-  optionLabel: { fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-main)' },
-  optionRow: { display: 'flex', flexWrap: 'wrap', gap: '0.55rem', alignItems: 'center' },
-  optionBtn: {
-    padding: '0.45rem 1.1rem',
+  imgCard: {
+    position: 'relative',
     borderRadius: '10px',
+    overflow: 'hidden',
+    border: '1px solid var(--border-color)',
+    aspectRatio: '1',
+    boxShadow: '0 2px 6px rgba(15,23,42,0.02)',
+  },
+  img: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+  },
+  mainBadge: {
+    position: 'absolute',
+    top: '6px',
+    left: '6px',
+    background: 'var(--accent)',
+    color: '#fff',
+    fontSize: '0.65rem',
+    padding: '3px 8px',
+    borderRadius: '20px',
+    fontWeight: 700,
+    boxShadow: '0 2px 6px rgba(99,102,241,0.3)',
+  },
+  imgActions: {
+    position: 'absolute',
+    bottom: '6px',
+    right: '6px',
+    display: 'flex',
+    gap: '0.35rem',
+  },
+  starBtn: {
+    background: '#fffbe6',
+    border: '1px solid #ffe58f',
+    borderRadius: '6px',
+    padding: '5px',
+    cursor: 'pointer',
+    color: '#d97706',
+    display: 'flex',
+  },
+  deleteImgBtn: {
+    background: 'var(--danger-light)',
+    border: '1px solid rgba(239,68,68,0.15)',
+    borderRadius: '6px',
+    padding: '5px',
+    cursor: 'pointer',
+    color: 'var(--danger)',
+    display: 'flex',
+  },
+  field: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.45rem',
+  },
+  row: {
+    display: 'flex',
+    gap: '1.25rem',
+  },
+  label: {
+    fontWeight: 700,
+    fontSize: '0.88rem',
+    color: 'var(--text-main)',
+  },
+  input: {
+    padding: '0.7rem 0.95rem',
+    borderRadius: '10px',
+    border: '1px solid var(--border-color)',
+    fontSize: '0.95rem',
+    outline: 'none',
+    boxShadow: '0 2px 4px rgba(15,23,42,0.01)',
+  },
+  tagGroup: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '0.5rem',
+  },
+  tag: {
+    padding: '0.45rem 1rem',
+    borderRadius: '20px',
     border: '1px solid var(--border-color)',
     cursor: 'pointer',
     fontSize: '0.85rem',
     fontWeight: 600,
-    background: '#fff',
     transition: 'all 0.2s',
   },
-  colorCircle: {
-    width: '32px',
-    height: '32px',
-    borderRadius: '50%',
-    cursor: 'pointer',
+  saveBtn: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 0,
-    transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-  },
-  stockBox: {
-    display: 'flex',
-    alignItems: 'center',
     gap: '0.5rem',
-  },
-  stock: { fontSize: '0.92rem', margin: 0 },
-  buyBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '0.6rem',
-    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+    padding: '0.8rem',
+    background: 'var(--accent)',
     color: '#fff',
     border: 'none',
-    borderRadius: '12px',
+    borderRadius: '10px',
+    fontSize: '0.98rem',
     fontWeight: 700,
-    width: '100%',
-    boxShadow: '0 4px 14px rgba(16, 185, 129, 0.3)',
-    transition: 'all 0.25s',
+    cursor: 'pointer',
+    boxShadow: '0 4px 12px rgba(99,102,241,0.25)',
   },
-  noPhone: {
-    fontSize: '0.8rem',
-    color: 'var(--text-muted)',
-    textAlign: 'center',
+  error: {
+    color: 'var(--danger)',
+    fontSize: '0.88rem',
+    background: 'var(--danger-light)',
+    padding: '0.5rem 0.85rem',
+    borderRadius: '6px',
+    border: '1px solid rgba(239,68,68,0.15)',
     margin: 0,
   },
 }

@@ -24,6 +24,7 @@ const COUNTRIES = [
 ]
 
 export default function Settings() {
+  const [settingsId, setSettingsId] = useState('')
   const [countryCode, setCountryCode] = useState('506')
   const [number, setNumber] = useState('')
   const [loading, setLoading] = useState(true)
@@ -33,6 +34,7 @@ export default function Settings() {
 
   useEffect(() => {
     getSettings().then(data => {
+      setSettingsId(data.id)
       setCountryCode(data.whatsapp_country_code || '506')
       setNumber(data.whatsapp_number || '')
       setLoading(false)
@@ -48,7 +50,7 @@ export default function Settings() {
     setSaving(true)
     setError('')
     try {
-      await updateSettings(countryCode, number.trim())
+      await updateSettings(settingsId, countryCode, number.trim())
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch {

@@ -24,7 +24,7 @@ export const createProduct = async (product: Omit<Product, 'id' | 'created_at'>)
   const { data, error } = await supabase
     .from('products')
     .insert(product)
-    .select()
+    .select('*')
     .single()
   if (error) throw error
   return data
@@ -35,7 +35,7 @@ export const updateProduct = async (id: string, product: Partial<Product>) => {
     .from('products')
     .update(product)
     .eq('id', id)
-    .select()
+    .select('*')
     .single()
   if (error) throw error
   return data
@@ -74,10 +74,10 @@ export const saveProductImage = async (productId: string, url: string, isMain: b
 }
 
 export const deleteProductImage = async (imageId: string, url: string) => {
-  // Extraer path del storage desde la URL
   const path = url.split('/product-images/')[1]
 
-  await supabase.storage.from('product-images').remove([path])
+  const { error: storageError } = await supabase.storage.from('product-images').remove([path])
+  if (storageError) throw storageError
 
   const { error } = await supabase
     .from('product_images')
@@ -88,11 +88,13 @@ export const deleteProductImage = async (imageId: string, url: string) => {
 }
 
 export const setMainImage = async (imageId: string, productId: string) => {
-  // Quitar main de todas
-  await supabase
+  // Quitar main de todas las imágenes del producto
+  const { error: clearError } = await supabase
     .from('product_images')
     .update({ is_main: false })
     .eq('product_id', productId)
+
+  if (clearError) throw clearError
 
   // Poner main en la seleccionada
   const { error } = await supabase
@@ -112,7 +114,7 @@ export const getSettings = async () => {
   return data
 }
 
-export const updateSettings = async (countryCode: string, number: string) => {
+export const updateSettings = async (id: string, countryCode: string, number: string) => {
   const { data, error } = await supabase
     .from('settings')
     .update({
@@ -120,7 +122,7 @@ export const updateSettings = async (countryCode: string, number: string) => {
       whatsapp_number: number,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', (await getSettings()).id)
+    .eq('id', id)
   if (error) throw error
   return data
 }

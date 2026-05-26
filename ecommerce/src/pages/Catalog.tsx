@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getProducts } from '../services/productService'
+import type { Product } from '../types/product'
 import ProductCard from '../components/ProductCard'
 import { Shirt, Settings, Search, SlidersHorizontal } from 'lucide-react'
 
 export default function Catalog() {
-  const [products, setProducts] = useState<any[]>([])
+  const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStock, setFilterStock] = useState('all') // 'all', 'available', 'outOfStock'
@@ -321,7 +322,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: '3px solid rgba(99, 102, 241, 0.1)',
     borderTopColor: 'var(--accent)',
     borderRadius: '50%',
-    animation: 'pulseGlow 2s infinite, meshGlow 1s linear infinite',
+    animation: 'spin 0.8s linear infinite',
   },
   loadingText: {
     color: 'var(--text-muted)',

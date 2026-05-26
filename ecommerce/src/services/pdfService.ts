@@ -2,248 +2,515 @@ import jsPDF from 'jspdf'
 import type { Product } from '../types/product'
 import type { Settings } from '../types/settings'
 
+// ─────────────────────────────────────────────
+//  PALETA
+// ─────────────────────────────────────────────
+const C = {
+  // Portada
+  coverBg:      [12, 10, 28]    as const,
+  coverBg2:     [20, 16, 48]    as const,
+  coverAccent:  [108, 99, 255]  as const,  // púrpura-índigo vibrante
+  coverAccent2: [80, 200, 160]  as const,  // verde menta
+  coverLine:    [60, 55, 120]   as const,
+
+  // Páginas producto
+  pageBg:       [250, 250, 253] as const,
+  headerBg:     [18, 14, 48]    as const,
+
+  // Tarjeta
+  cardBg:       [255, 255, 255] as const,
+  cardBorder:   [230, 228, 245] as const,
+  cardImgBg:    [244, 244, 250] as const,
+  cardAccent:   [108, 99, 255]  as const,
+
+  // Tipografía
+  textDark:     [18, 14, 48]    as const,
+  textMid:      [80, 75, 120]   as const,
+  textLight:    [150, 145, 180] as const,
+  textWhite:    [255, 255, 255] as const,
+  priceText:    [60, 50, 180]   as const,
+  priceBg:      [235, 233, 255] as const,
+
+  // Botón WA
+  waBg:         [16, 185, 129]  as const,
+  waBgDark:     [5, 140, 95]    as const,
+
+  // Footer
+  footerBorder: [210, 208, 230] as const,
+}
+
+const fill = (pdf: jsPDF, c: readonly [number, number, number]) => pdf.setFillColor(...c)
+const draw = (pdf: jsPDF, c: readonly [number, number, number]) => pdf.setDrawColor(...c)
+const text = (pdf: jsPDF, c: readonly [number, number, number]) => pdf.setTextColor(...c)
+
+// ─────────────────────────────────────────────
+//  GENERADOR PRINCIPAL
+// ─────────────────────────────────────────────
 export const generateCatalogPDF = async (
   products: Product[],
   settings: Settings,
   storeUrl: string
 ) => {
   const pdf = new jsPDF('p', 'mm', 'a4')
-  const pageWidth = 210
-  const pageHeight = 297
-  
-  const margin = 16
-  const colGap = 10
-  const rowGap = 10
-  const cols = 2
-  const cardWidth = (pageWidth - (margin * 2) - (colGap * (cols - 1))) / cols
-  const cardHeight = 95
-  const imgHeight = 54
+  const W = 210
+  const H = 297
+  const M = 12          // margen
+  const COLS = 2
+  const GAP = 6
+  const CARD_W = (W - M * 2 - GAP) / COLS
+  const CARD_H = 108
+  const IMG_H  = 64
 
   const waNumber = `${settings.whatsapp_country_code}${settings.whatsapp_number.replace(/\s/g, '')}`
 
-  // ── PORTADA PREMIUM DE ALTA GAMA ──
-  // Fondo oscuro lujoso
-  pdf.setFillColor(11, 15, 25)
-  pdf.rect(0, 0, pageWidth, pageHeight, 'F')
+  // PORTADA
+  drawCover(pdf, W, H, waNumber, products.length)
 
-  // Círculos abstractos/orbes de neón suave
-  pdf.setFillColor(30, 27, 75)
-  pdf.circle(pageWidth, 0, 110, 'F') 
-  pdf.setFillColor(49, 46, 129)
-  pdf.circle(0, pageHeight, 70, 'F')
-
-  // Marco de doble línea elegante
-  pdf.setDrawColor(99, 102, 241) // Índigo brillante
-  pdf.setLineWidth(0.4)
-  pdf.rect(8, 8, pageWidth - 16, pageHeight - 16, 'D')
-
-  pdf.setDrawColor(79, 70, 229)
-  pdf.setLineWidth(0.2)
-  pdf.rect(10, 10, pageWidth - 20, pageHeight - 20, 'D')
-
-  // Textos de la Portada
-  pdf.setTextColor(165, 180, 252) // Índigo claro
-  pdf.setFont('helvetica', 'bold')
-  pdf.setFontSize(10)
-  pdf.text('TIENDA ONLINE', pageWidth / 2, 95, { align: 'center', charSpace: 3 })
-
-  pdf.setTextColor(255, 255, 255)
-  pdf.setFontSize(36)
-  pdf.text('CATÁLOGO', pageWidth / 2, 112, { align: 'center', charSpace: 4 })
-
-  pdf.setFontSize(13)
-  pdf.setTextColor(148, 163, 184) // Slate 300
-  pdf.setFont('helvetica', 'normal')
-  pdf.text('COLECCIÓN EXCLUSIVA', pageWidth / 2, 122, { align: 'center', charSpace: 2 })
-
-  pdf.setDrawColor(99, 102, 241)
-  pdf.setLineWidth(0.6)
-  pdf.line(pageWidth / 2 - 25, 131, pageWidth / 2 + 25, 131)
-
-  pdf.setFontSize(10)
-  pdf.setTextColor(148, 163, 184)
-  pdf.text('Estilo y Calidad en Cada Detalle', pageWidth / 2, 142, { align: 'center' })
-
-  if (waNumber) {
-    pdf.setFillColor(16, 185, 129) // Emerald
-    pdf.roundedRect(pageWidth / 2 - 42, 162, 84, 11, 2, 2, 'F')
-    pdf.setTextColor(255, 255, 255)
-    pdf.setFontSize(8)
-    pdf.setFont('helvetica', 'bold')
-    pdf.textWithLink(
-      `PEDIR POR WHATSAPP →`,
-      pageWidth / 2,
-      169.3,
-      { align: 'center', url: `https://wa.me/${waNumber}` }
-    )
-  }
-
-  // ── CONFIGURACIÓN DE PRODUCTOS ──
+  // PÁGINAS DE PRODUCTOS
   pdf.addPage()
-  drawPageHeader(pdf, margin, pageWidth)
-  
-  let currentY = margin + 18
+  drawProductBg(pdf, W, H)
+  drawHeader(pdf, W, M)
+
+  let curY = M + 22
 
   for (let i = 0; i < products.length; i++) {
-    const product = products[i]
-    const col = i % cols
+    const col = i % COLS
 
+    // Al inicio de cada fila nueva, verificar si hay espacio
     if (col === 0 && i !== 0) {
-      if (currentY + cardHeight + rowGap > pageHeight - margin - 15) {
-        pdf.addPage()
-        drawPageHeader(pdf, margin, pageWidth)
-        currentY = margin + 18
-      } else {
-        currentY += cardHeight + rowGap
-      }
+      curY += CARD_H + GAP
     }
 
-    const currentX = margin + col * (cardWidth + colGap)
-
-    const productUrl = `${storeUrl}/producto/${product.id}`
-    const message = `¡Hola! Me interesa este producto:\n\n${product.name}\nPrecio: ₡${product.price.toLocaleString()}\n\n${productUrl}`
-    const waLink = `https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`
-
-    const mainImg = product.product_images?.find(img => img.is_main) || product.product_images?.[0]
-
-    // Sombra sutil de la tarjeta
-    pdf.setFillColor(241, 245, 249) // Slate 100
-    pdf.roundedRect(currentX + 0.6, currentY + 0.6, cardWidth, cardHeight, 4, 4, 'F')
-
-    // Fondo de la Tarjeta
-    pdf.setFillColor(255, 255, 255)
-    pdf.setDrawColor(226, 232, 240) // Slate 200
-    pdf.setLineWidth(0.2)
-    pdf.roundedRect(currentX, currentY, cardWidth, cardHeight, 4, 4, 'FD')
-
-    // ── Renderizado de Imagen con Ajuste de Proporción ──
-    if (mainImg?.url) {
-      try {
-        const imgDimensions = await loadImageDimensions(mainImg.url)
-        
-        // Área máxima disponible para la imagen dentro de la tarjeta
-        const maxW = cardWidth - 6
-        const maxH = imgHeight
-        
-        // Calcular proporciones (Simulación de object-fit: contain)
-        const imgRatio = imgDimensions.width / imgDimensions.height
-        const containerRatio = maxW / maxH
-        
-        let finalW = maxW
-        let finalH = maxH
-        
-        if (imgRatio > containerRatio) {
-          finalH = maxW / imgRatio
-        } else {
-          finalW = maxH * imgRatio
-        }
-        
-        // Centrar la imagen en su contenedor asignado
-        const offsetX = currentX + 3 + (maxW - finalW) / 2
-        const offsetY = currentY + 3 + (maxH - finalH) / 2
-
-        pdf.addImage(imgDimensions.base64, 'JPEG', offsetX, offsetY, finalW, finalH, undefined, 'FAST')
-      } catch {
-        drawPlaceholder(pdf, currentX + 3, currentY + 3, cardWidth - 6, imgHeight)
-      }
-    } else {
-      drawPlaceholder(pdf, currentX + 3, currentY + 3, cardWidth - 6, imgHeight)
+    // Si la tarjeta no cabe en la página actual, nueva página
+    if (col === 0 && curY + CARD_H > H - M - 14) {
+      pdf.addPage()
+      drawProductBg(pdf, W, H)
+      drawHeader(pdf, W, M)
+      curY = M + 22
     }
 
-    // Nombre del Producto
-    pdf.setTextColor(15, 23, 42) // Slate 900
-    pdf.setFontSize(9)
-    pdf.setFont('helvetica', 'bold')
-    const truncatedName = product.name.length > 20 ? product.name.slice(0, 20) + '...' : product.name
-    pdf.textWithLink(truncatedName, currentX + 5, currentY + imgHeight + 9, { url: productUrl })
-
-    // Precio
-    pdf.setTextColor(99, 102, 241) // Accent Indigo
-    pdf.setFontSize(9.5)
-    pdf.setFont('helvetica', 'bold')
-    pdf.text(`₡${product.price.toLocaleString()}`, currentX + 5, currentY + imgHeight + 15.5)
-
-    // Botón de Acción WhatsApp
-    pdf.setFillColor(16, 185, 129) // Emerald
-    pdf.roundedRect(currentX + 5, currentY + imgHeight + 21, cardWidth - 10, 8.5, 2, 2, 'F')
-    
-    pdf.setTextColor(255, 255, 255)
-    pdf.setFontSize(7.5)
-    pdf.setFont('helvetica', 'bold')
-    pdf.textWithLink(
-      'Pedir por WhatsApp →',
-      currentX + (cardWidth / 2),
-      currentY + imgHeight + 26.8,
-      { align: 'center', url: waLink }
-    )
+    const x = M + col * (CARD_W + GAP)
+    const productUrl = `${storeUrl}/producto/${products[i].id}`
+    const waMsg = `¡Hola! Me interesa:\n${products[i].name}\nPrecio: CRC ${products[i].price.toLocaleString()}\n${productUrl}`
+    const waLink = `https://wa.me/${waNumber}?text=${encodeURIComponent(waMsg)}`
+    await drawCard(pdf, products[i], x, curY, CARD_W, CARD_H, IMG_H, productUrl, waLink)
   }
 
-  // ── FOOTERS ──
-  const totalPages = pdf.getNumberOfPages()
-  for (let p = 1; p <= totalPages; p++) {
-    if (p === 1) continue 
-    
+  // FOOTERS en páginas de productos
+  const total = pdf.getNumberOfPages()
+  for (let p = 2; p <= total; p++) {
     pdf.setPage(p)
-    
-    pdf.setDrawColor(226, 232, 240)
-    pdf.setLineWidth(0.2)
-    pdf.line(margin, pageHeight - 14, pageWidth - margin, pageHeight - 14)
-
-    pdf.setTextColor(148, 163, 184)
-    pdf.setFontSize(7)
-    pdf.setFont('helvetica', 'normal')
-    
-    pdf.text(`CamisasShop  |  ${storeUrl.replace(/^https?:\/\//, '')}`, margin, pageHeight - 9)
-    pdf.text(`Página ${p} de ${totalPages}`, pageWidth - margin, pageHeight - 9, { align: 'right' })
+    drawFooter(pdf, W, H, M, storeUrl, p - 1, total - 1)
   }
 
   pdf.save('catalogo-camisas.pdf')
 }
 
-const drawPageHeader = (pdf: jsPDF, margin: number, pageWidth: number) => {
-  pdf.setTextColor(99, 102, 241) // Accent Indigo
+// ─────────────────────────────────────────────
+//  PORTADA  —  diseño editorial limpio
+// ─────────────────────────────────────────────
+const drawCover = (pdf: jsPDF, W: number, H: number, waNumber: string, count: number) => {
+
+  // ── Fondo base ──
+  fill(pdf, C.coverBg)
+  pdf.rect(0, 0, W, H, 'F')
+
+  // ── Panel izquierdo oscuro ──
+  fill(pdf, C.coverBg2)
+  pdf.rect(0, 0, 72, H, 'F')
+
+  // ── Línea vertical separadora con degradado simulado ──
+  // Sombra difuminada
+  for (let i = 0; i < 8; i++) {
+    pdf.setFillColor(108, 99, 255, (8 - i) * 4)
+    pdf.rect(72 + i * 0.8, 0, 1, H, 'F')
+  }
+  fill(pdf, C.coverAccent)
+  pdf.rect(72, 0, 1.5, H, 'F')
+
+  // ── Bloques decorativos geométricos ──
+  // Rectángulo superior derecho
+  fill(pdf, [22, 18, 55])
+  pdf.rect(73.5, 0, W - 73.5, 45, 'F')
+
+  // Línea de acento horizontal superior
+  fill(pdf, C.coverAccent)
+  pdf.rect(73.5, 45, W - 73.5, 0.8, 'F')
+
+  // Bloque inferior derecho
+  fill(pdf, [16, 13, 42])
+  pdf.rect(73.5, H - 55, W - 73.5, 55, 'F')
+
+  // Línea de acento inferior
+  fill(pdf, C.coverAccent2)
+  pdf.rect(73.5, H - 55, W - 73.5, 0.8, 'F')
+
+  // ── Texto vertical en panel izquierdo ──
+  text(pdf, [60, 55, 110])
+  pdf.setFont('helvetica', 'normal')
+  pdf.setFontSize(7)
+  // Texto lateral rotado (aproximado con posiciones)
+  pdf.text('CAMISASSHOP  ·  2026', 10, H - 20, { angle: 90 })
+
+  // Línea decorativa vertical en panel izquierdo
+  draw(pdf, [50, 45, 100])
+  pdf.setLineWidth(0.3)
+  pdf.line(36, 20, 36, H - 20)
+
+  // Pequeño rombo en la línea vertical
+  fill(pdf, C.coverAccent)
+  const rdx = 36, rdy = H / 2
+  pdf.triangle(rdx, rdy - 4, rdx - 3, rdy, rdx, rdy + 4, 'F')
+  pdf.triangle(rdx, rdy - 4, rdx + 3, rdy, rdx, rdy + 4, 'F')
+
+  // ── Zona central — contenido principal ──
+  // Posición X del contenido (centro del panel derecho)
+  const rx = 73.5 + (W - 73.5) / 2  // centro del área derecha
+
+  // Etiqueta superior pequeña
+  const labelY = 60
+  text(pdf, C.coverAccent)
   pdf.setFont('helvetica', 'bold')
-  pdf.setFontSize(8)
-  pdf.text('CAMISASSHOP', margin, margin + 4)
-  
-  pdf.setFont('helvetica', 'normal')
-  pdf.setTextColor(148, 163, 184) // Slate 400
   pdf.setFontSize(6.5)
-  pdf.text('COLECCIÓN EXCLUSIVA', margin, margin + 8)
+  pdf.text('COLECCION EXCLUSIVA', rx, labelY, { align: 'center', charSpace: 2 })
 
-  pdf.setDrawColor(226, 232, 240) // Slate 200
-  pdf.setLineWidth(0.2)
-  pdf.line(margin, margin + 10, pageWidth - margin, margin + 10)
-}
+  // Líneas decorativas flanqueando la etiqueta
+  draw(pdf, C.coverLine)
+  pdf.setLineWidth(0.3)
+  pdf.line(rx - 50, labelY - 2, rx - 28, labelY - 2)
+  pdf.line(rx + 28, labelY - 2, rx + 50, labelY - 2)
 
-const drawPlaceholder = (pdf: jsPDF, x: number, y: number, w: number, h: number) => {
-  pdf.setFillColor(249, 250, 251)
-  pdf.roundedRect(x, y, w, h, 2, 2, 'F')
-  pdf.setTextColor(156, 163, 175)
-  pdf.setFontSize(8)
+  // ── TÍTULO PRINCIPAL ──
+  const titleY = 95
+  text(pdf, C.textWhite)
+  pdf.setFont('helvetica', 'bold')
+  pdf.setFontSize(52)
+  pdf.text('CATA-', rx, titleY, { align: 'center' })
+  pdf.text('LOGO', rx, titleY + 38, { align: 'center' })
+
+  // Línea de acento entre las dos palabras del título
+  fill(pdf, C.coverAccent)
+  pdf.rect(rx - 28, titleY + 8, 56, 1.5, 'F')
+
+  // ── AÑO ──
+  text(pdf, [90, 85, 145])
   pdf.setFont('helvetica', 'normal')
-  pdf.text('Imagen no disponible', x + w / 2, y + h / 2 + 2, { align: 'center' })
+  pdf.setFontSize(10)
+  pdf.text('2026', rx, titleY + 52, { align: 'center', charSpace: 6 })
+
+  // ── Separador ornamental ──
+  const sepY = titleY + 64
+  draw(pdf, C.coverAccent)
+  pdf.setLineWidth(0.5)
+  pdf.line(rx - 22, sepY, rx - 6, sepY)
+  pdf.line(rx + 6, sepY, rx + 22, sepY)
+  // Diamante central
+  fill(pdf, C.coverAccent)
+  pdf.triangle(rx, sepY - 3.5, rx - 4, sepY, rx, sepY + 3.5, 'F')
+  pdf.triangle(rx, sepY - 3.5, rx + 4, sepY, rx, sepY + 3.5, 'F')
+
+  // ── Descripción ──
+  const dY = sepY + 14
+  text(pdf, [170, 165, 210])
+  pdf.setFont('helvetica', 'normal')
+  pdf.setFontSize(8.5)
+  pdf.text('Camisas exclusivas confeccionadas', rx, dY, { align: 'center' })
+  pdf.text('con materiales de la mas alta calidad', rx, dY + 7, { align: 'center' })
+
+  // ── Badge cantidad de productos ──
+  const bdY = dY + 20
+  const bdW = 58
+  fill(pdf, [28, 22, 68])
+  pdf.roundedRect(rx - bdW / 2, bdY, bdW, 10, 5, 5, 'F')
+  draw(pdf, C.coverAccent)
+  pdf.setLineWidth(0.3)
+  pdf.roundedRect(rx - bdW / 2, bdY, bdW, 10, 5, 5, 'D')
+  text(pdf, C.coverAccent)
+  pdf.setFontSize(7)
+  pdf.setFont('helvetica', 'bold')
+  pdf.text(`${count} PRODUCTOS`, rx, bdY + 6.8, { align: 'center' })
+
+  // ── Botón WhatsApp ──
+  if (waNumber) {
+    const bY = bdY + 18
+    const bW = 80
+    const bH = 13
+
+    fill(pdf, C.waBgDark)
+    pdf.roundedRect(rx - bW / 2 + 0.5, bY + 0.5, bW, bH, 4, 4, 'F')
+
+    fill(pdf, C.waBg)
+    pdf.roundedRect(rx - bW / 2, bY, bW, bH, 4, 4, 'F')
+
+    // Brillo
+    fill(pdf, [30, 210, 155])
+    pdf.roundedRect(rx - bW / 2 + 3, bY + 1, bW - 6, 3.5, 2, 2, 'F')
+    fill(pdf, C.waBg)
+    pdf.rect(rx - bW / 2 + 3, bY + 2.5, bW - 6, 2, 'F')
+
+    text(pdf, C.textWhite)
+    pdf.setFontSize(8.5)
+    pdf.setFont('helvetica', 'bold')
+    const bt = 'PEDIR POR WHATSAPP'
+    const btW = pdf.getTextWidth(bt)
+    pdf.textWithLink(bt, rx - btW / 2, bY + bH / 2 + 3, { url: `https://wa.me/${waNumber}` })
+  }
+
+  // ── Footer de portada ──
+  // Línea horizontal en la zona inferior
+  fill(pdf, [20, 17, 50])
+  pdf.rect(73.5, H - 54, W - 73.5, 0.5, 'F')
+
+  text(pdf, [100, 95, 155])
+  pdf.setFont('helvetica', 'bold')
+  pdf.setFontSize(7.5)
+  pdf.text('CAMISASSHOP', rx, H - 40, { align: 'center', charSpace: 1.5 })
+
+  text(pdf, [65, 60, 110])
+  pdf.setFont('helvetica', 'normal')
+  pdf.setFontSize(6)
+  pdf.text('Estilo  ·  Calidad  ·  Elegancia', rx, H - 32, { align: 'center' })
+
+  // Tres puntos decorativos
+  for (let i = -1; i <= 1; i++) {
+    fill(pdf, i === 0 ? C.coverAccent : [50, 46, 100])
+    pdf.circle(rx + i * 5, H - 24, i === 0 ? 1.2 : 0.8, 'F')
+  }
 }
 
-// ── AUXILIAR ACTUALIZADO: Retorna dimensiones reales además del Base64 ──
-const loadImageDimensions = (url: string): Promise<{ base64: string; width: number; height: number }> => {
-  return new Promise((resolve, reject) => {
+// ─────────────────────────────────────────────
+//  FONDO PÁGINAS DE PRODUCTOS
+// ─────────────────────────────────────────────
+const drawProductBg = (pdf: jsPDF, W: number, H: number) => {
+  // Fondo muy claro
+  fill(pdf, C.pageBg)
+  pdf.rect(0, 0, W, H, 'F')
+
+  // Franja de header oscura
+  fill(pdf, C.headerBg)
+  pdf.rect(0, 0, W, 18, 'F')
+
+  // Línea de acento bajo el header
+  fill(pdf, C.coverAccent)
+  pdf.rect(0, 18, W, 1, 'F')
+}
+
+// ─────────────────────────────────────────────
+//  HEADER DE PÁGINA
+// ─────────────────────────────────────────────
+const drawHeader = (pdf: jsPDF, W: number, M: number) => {
+  // Logo
+  text(pdf, C.textWhite)
+  pdf.setFont('helvetica', 'bold')
+  pdf.setFontSize(9)
+  pdf.text('CAMISASSHOP', M, 12)
+
+  // Punto separador
+  text(pdf, [108, 99, 255])
+  pdf.setFontSize(9)
+  pdf.text('·', M + pdf.getTextWidth('CAMISASSHOP') + 2, 12)
+
+  // Subtítulo
+  text(pdf, [140, 135, 180])
+  pdf.setFont('helvetica', 'normal')
+  pdf.setFontSize(7)
+  pdf.text('Coleccion Exclusiva 2026', M + pdf.getTextWidth('CAMISASSHOP') + 6, 12)
+
+  // Badge derecho
+  const badgeW = 28
+  fill(pdf, [30, 25, 70])
+  pdf.roundedRect(W - M - badgeW, 5, badgeW, 8, 4, 4, 'F')
+  text(pdf, [108, 99, 255])
+  pdf.setFontSize(6)
+  pdf.setFont('helvetica', 'bold')
+  pdf.text('CATALOGO', W - M - badgeW / 2, 10.5, { align: 'center' })
+}
+
+// ─────────────────────────────────────────────
+//  TARJETA DE PRODUCTO
+// ─────────────────────────────────────────────
+const drawCard = async (
+  pdf: jsPDF,
+  product: Product,
+  x: number, y: number,
+  w: number, h: number,
+  imgH: number,
+  productUrl: string,
+  waLink: string
+) => {
+  const mainImg = product.product_images?.find(i => i.is_main) || product.product_images?.[0]
+  const pad = 5
+
+  // Sombra suave
+  pdf.setFillColor(200, 198, 225, 60)
+  pdf.roundedRect(x + 1, y + 1.5, w, h, 5, 5, 'F')
+
+  // Fondo blanco
+  fill(pdf, C.cardBg)
+  pdf.roundedRect(x, y, w, h, 5, 5, 'F')
+
+  // Borde sutil
+  draw(pdf, C.cardBorder)
+  pdf.setLineWidth(0.2)
+  pdf.roundedRect(x, y, w, h, 5, 5, 'D')
+
+  // Acento superior (barra de color)
+  fill(pdf, C.cardAccent)
+  pdf.roundedRect(x, y, w, 2.5, 5, 5, 'F')
+  pdf.rect(x, y + 1.5, w, 1, 'F')
+
+  // ── Imagen ──
+  const iX = x + pad
+  const iY = y + pad + 2
+  const iW = w - pad * 2
+  const iAreaH = imgH
+
+  fill(pdf, C.cardImgBg)
+  pdf.roundedRect(iX, iY, iW, iAreaH, 3, 3, 'F')
+
+  if (mainImg?.url) {
+    try {
+      const imgData = await loadImg(mainImg.url)
+      const ratio = imgData.w / imgData.h
+      const cRatio = iW / iAreaH
+      let fw = iW - 2, fh = iAreaH - 2
+      if (ratio > cRatio) fh = fw / ratio
+      else fw = fh * ratio
+      const ox = iX + 1 + (iW - 2 - fw) / 2
+      const oy = iY + 1 + (iAreaH - 2 - fh) / 2
+      pdf.addImage(imgData.b64, 'JPEG', ox, oy, fw, fh, undefined, 'FAST')
+    } catch {
+      drawPlaceholder(pdf, iX, iY, iW, iAreaH)
+    }
+  } else {
+    drawPlaceholder(pdf, iX, iY, iW, iAreaH)
+  }
+
+  // ── Información ──
+  const infoY = iY + iAreaH + 5
+
+  // Nombre
+  text(pdf, C.textDark)
+  pdf.setFontSize(9)
+  pdf.setFont('helvetica', 'bold')
+  const maxLen = 24
+  const name = product.name.length > maxLen ? product.name.slice(0, maxLen) + '...' : product.name
+  pdf.textWithLink(name, x + pad, infoY, { url: productUrl })
+
+  // Precio
+  const priceY = infoY + 5.5
+  const priceStr = `CRC ${product.price.toLocaleString()}`
+  pdf.setFontSize(8.5)
+  const pw = pdf.getTextWidth(priceStr) + 8
+  fill(pdf, C.priceBg)
+  pdf.roundedRect(x + pad - 1, priceY - 4, pw, 6.5, 3, 3, 'F')
+  text(pdf, C.priceText)
+  pdf.setFont('helvetica', 'bold')
+  pdf.text(priceStr, x + pad + 3, priceY + 0.5)
+
+  // Tallas
+  if (product.sizes?.length) {
+    const szY = priceY + 6
+    text(pdf, C.textLight)
+    pdf.setFontSize(6.5)
+    pdf.setFont('helvetica', 'normal')
+    const sz = `Tallas: ${product.sizes.join(' · ')}`
+    pdf.text(sz.length > 32 ? sz.slice(0, 32) + '...' : sz, x + pad, szY)
+  }
+
+  // ── Botón WhatsApp ──
+  const bW = w - pad * 2
+  const bH = 9.5
+  const bX = x + pad
+  const bY = y + h - bH - pad
+
+  fill(pdf, C.waBgDark)
+  pdf.roundedRect(bX + 0.4, bY + 0.4, bW, bH, 3, 3, 'F')
+
+  fill(pdf, C.waBg)
+  pdf.roundedRect(bX, bY, bW, bH, 3, 3, 'F')
+
+  draw(pdf, [34, 200, 150])
+  pdf.setLineWidth(0.2)
+  pdf.line(bX + 4, bY + 0.4, bX + bW - 4, bY + 0.4)
+
+  text(pdf, C.textWhite)
+  pdf.setFontSize(7.5)
+  pdf.setFont('helvetica', 'bold')
+  const bt = 'Pedir por WhatsApp'
+  const btW = pdf.getTextWidth(bt)
+  pdf.textWithLink(bt, bX + bW / 2 - btW / 2, bY + bH / 2 + 2.2, { url: waLink })
+}
+
+// ─────────────────────────────────────────────
+//  FOOTER
+// ─────────────────────────────────────────────
+const drawFooter = (pdf: jsPDF, W: number, H: number, M: number, storeUrl: string, page: number, total: number) => {
+  const fY = H - 12
+
+  draw(pdf, C.footerBorder)
+  pdf.setLineWidth(0.15)
+  pdf.line(M, fY, W - M, fY)
+
+  // Acento
+  fill(pdf, C.coverAccent)
+  pdf.rect(M, fY - 0.1, 18, 0.8, 'F')
+
+  text(pdf, C.textMid)
+  pdf.setFontSize(6)
+  pdf.setFont('helvetica', 'bold')
+  pdf.text('CamisasShop', M, fY + 5.5)
+
+  text(pdf, C.textLight)
+  pdf.setFont('helvetica', 'normal')
+  const urlText = `  ·  ${storeUrl.replace(/^https?:\/\//, '')}`
+  pdf.text(urlText, M + pdf.getTextWidth('CamisasShop') + 0.5, fY + 5.5)
+
+  // Paginación
+  const pgTxt = `${page} / ${total}`
+  const pgW = pdf.getTextWidth(pgTxt) + 7
+  fill(pdf, C.priceBg)
+  pdf.roundedRect(W - M - pgW, fY + 1, pgW, 6.5, 3, 3, 'F')
+  text(pdf, C.priceText)
+  pdf.setFontSize(6)
+  pdf.setFont('helvetica', 'bold')
+  pdf.text(pgTxt, W - M - pgW / 2, fY + 5.5, { align: 'center' })
+}
+
+// ─────────────────────────────────────────────
+//  PLACEHOLDER
+// ─────────────────────────────────────────────
+const drawPlaceholder = (pdf: jsPDF, x: number, y: number, w: number, h: number) => {
+  fill(pdf, [240, 239, 248])
+  pdf.roundedRect(x, y, w, h, 3, 3, 'F')
+
+  const cx = x + w / 2
+  const cy = y + h / 2 - 3
+  draw(pdf, [195, 190, 225])
+  pdf.setLineWidth(0.6)
+  pdf.rect(cx - 7, cy - 5, 14, 12, 'D')
+  pdf.triangle(cx - 4, cy - 5, cx, cy - 2, cx + 4, cy - 5, 'D')
+
+  text(pdf, [180, 175, 210])
+  pdf.setFontSize(6.5)
+  pdf.setFont('helvetica', 'normal')
+  pdf.text('Sin imagen', cx, cy + 14, { align: 'center' })
+}
+
+// ─────────────────────────────────────────────
+//  UTILIDAD: carga de imagen
+// ─────────────────────────────────────────────
+const loadImg = (url: string): Promise<{ b64: string; w: number; h: number }> =>
+  new Promise((res, rej) => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
     img.onload = () => {
-      const canvas = document.createElement('canvas')
-      canvas.width = img.width
-      canvas.height = img.height
-      const ctx = canvas.getContext('2d')
-      ctx?.drawImage(img, 0, 0)
-      
-      resolve({
-        base64: canvas.toDataURL('image/jpeg', 0.8),
-        width: img.width,
-        height: img.height
-      })
+      const c = document.createElement('canvas')
+      c.width = img.width
+      c.height = img.height
+      c.getContext('2d')?.drawImage(img, 0, 0)
+      res({ b64: c.toDataURL('image/jpeg', 0.85), w: img.width, h: img.height })
     }
-    img.onerror = reject
+    img.onerror = rej
     img.src = url
   })
-}

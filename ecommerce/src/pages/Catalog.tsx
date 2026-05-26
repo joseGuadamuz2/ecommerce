@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getProducts } from '../services/productService'
+import { getProducts, getSettings } from '../services/productService'
 import type { Product } from '../types/product'
 import ProductCard from '../components/ProductCard'
-import { Shirt, Settings, Search, SlidersHorizontal } from 'lucide-react'
+import { Shirt, Settings, Search, SlidersHorizontal, FileDown } from 'lucide-react'
+import { generateCatalogPDF } from '../services/pdfService'
 
 export default function Catalog() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStock, setFilterStock] = useState('all') // 'all', 'available', 'outOfStock'
   const navigate = useNavigate()
@@ -26,6 +28,19 @@ export default function Catalog() {
     return matchesSearch && matchesStock
   })
 
+  const handleGeneratePDF = async () => {
+    setExporting(true)
+    try {
+      const settings = await getSettings()
+      const storeUrl = window.location.origin
+      await generateCatalogPDF(filteredProducts as any, settings, storeUrl)
+    } catch (error) {
+      console.error('Error generando PDF:', error)
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div style={styles.page}>
       {/* Header */}
@@ -37,13 +52,27 @@ export default function Catalog() {
             </div>
             <span style={styles.logoText}>CamisasShop</span>
           </div>
-          <button
-            style={styles.adminBtn}
-            onClick={() => navigate('/admin')}
-          >
-            <Settings size={15} />
-            <span>Admin</span>
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <button
+              style={{
+                ...styles.adminBtn,
+                opacity: exporting || products.length === 0 ? 0.6 : 1,
+                cursor: exporting || products.length === 0 ? 'not-allowed' : 'pointer',
+              }}
+              onClick={handleGeneratePDF}
+              disabled={exporting || products.length === 0}
+            >
+              <FileDown size={15} />
+              <span>{exporting ? 'Generando...' : 'PDF'}</span>
+            </button>
+            <button
+              style={styles.adminBtn}
+              onClick={() => navigate('/admin')}
+            >
+              <Settings size={15} />
+              <span>Admin</span>
+            </button>
+          </div>
         </div>
       </header>
 

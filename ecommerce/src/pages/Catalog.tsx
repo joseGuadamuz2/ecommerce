@@ -12,6 +12,8 @@ export default function Catalog() {
   const [exporting, setExporting] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStock, setFilterStock] = useState('all') // 'all', 'available', 'outOfStock'
+  const [currentPage, setCurrentPage] = useState(1)
+  const PRODUCTS_PER_PAGE = 8
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -27,6 +29,22 @@ export default function Catalog() {
                          filterStock === 'available' ? p.stock > 0 : p.stock === 0
     return matchesSearch && matchesStock
   })
+
+  const totalPages = Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE)
+  const paginatedProducts = filteredProducts.slice(
+    (currentPage - 1) * PRODUCTS_PER_PAGE,
+    currentPage * PRODUCTS_PER_PAGE
+  )
+
+  const handleSearchChange = (val: string) => {
+    setSearchTerm(val)
+    setCurrentPage(1)
+  }
+
+  const handleFilterChange = (val: string) => {
+    setFilterStock(val)
+    setCurrentPage(1)
+  }
 
   const handleGeneratePDF = async () => {
     setExporting(true)
@@ -96,7 +114,7 @@ export default function Catalog() {
               type="text"
               placeholder="Buscar camisas..."
               value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
+              onChange={e => handleSearchChange(e.target.value)}
               style={styles.searchInput}
             />
           </div>
@@ -104,7 +122,7 @@ export default function Catalog() {
           <div style={styles.filterOptions}>
             <SlidersHorizontal size={15} color="var(--text-muted)" style={{ marginRight: '0.25rem' }} />
             <button
-              onClick={() => setFilterStock('all')}
+              onClick={() => handleFilterChange('all')}
               style={{
                 ...styles.filterTab,
                 background: filterStock === 'all' ? 'var(--accent)' : 'transparent',
@@ -115,7 +133,7 @@ export default function Catalog() {
               Todos
             </button>
             <button
-              onClick={() => setFilterStock('available')}
+              onClick={() => handleFilterChange('available')}
               style={{
                 ...styles.filterTab,
                 background: filterStock === 'available' ? 'var(--accent)' : 'transparent',
@@ -126,7 +144,7 @@ export default function Catalog() {
               Disponibles
             </button>
             <button
-              onClick={() => setFilterStock('outOfStock')}
+              onClick={() => handleFilterChange('outOfStock')}
               style={{
                 ...styles.filterTab,
                 background: filterStock === 'outOfStock' ? 'var(--accent)' : 'transparent',
@@ -154,11 +172,54 @@ export default function Catalog() {
             </p>
           </div>
         ) : (
-          <div style={styles.grid}>
-            {filteredProducts.map(p => (
-              <ProductCard key={p.id} product={p} />
-            ))}
-          </div>
+          <>
+            <div style={styles.grid}>
+              {paginatedProducts.map(p => (
+                <ProductCard key={p.id} product={p} />
+              ))}
+            </div>
+
+            {/* Paginación */}
+            {totalPages > 1 && (
+              <div style={styles.pagination}>
+                <button
+                  style={{ ...styles.pageBtn, opacity: currentPage === 1 ? 0.4 : 1, cursor: currentPage === 1 ? 'not-allowed' : 'pointer' }}
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  ←
+                </button>
+
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                  <button
+                    key={page}
+                    style={{
+                      ...styles.pageBtn,
+                      background: currentPage === page ? 'var(--accent)' : '#fff',
+                      color: currentPage === page ? '#fff' : 'var(--text-main)',
+                      borderColor: currentPage === page ? 'var(--accent)' : 'var(--border-color)',
+                      fontWeight: currentPage === page ? 700 : 500,
+                    }}
+                    onClick={() => setCurrentPage(page)}
+                  >
+                    {page}
+                  </button>
+                ))}
+
+                <button
+                  style={{ ...styles.pageBtn, opacity: currentPage === totalPages ? 0.4 : 1, cursor: currentPage === totalPages ? 'not-allowed' : 'pointer' }}
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  →
+                </button>
+
+                <span style={styles.pageInfo}>
+                  {filteredProducts.length} productos · página {currentPage} de {totalPages}
+                </span>
+              </div>
+            )}
+          </>
         )}
       </main>
 
@@ -365,6 +426,33 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '16px',
     border: '1px solid var(--border-color)',
     boxShadow: 'var(--card-shadow)',
+  },
+  pagination: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '0.4rem',
+    marginTop: '2.5rem',
+    flexWrap: 'wrap',
+  },
+  pageBtn: {
+    minWidth: '36px',
+    height: '36px',
+    padding: '0 0.6rem',
+    borderRadius: '8px',
+    border: '1px solid var(--border-color)',
+    background: '#fff',
+    color: 'var(--text-main)',
+    fontSize: '0.9rem',
+    fontWeight: 500,
+    cursor: 'pointer',
+    transition: 'all 0.15s',
+  },
+  pageInfo: {
+    marginLeft: '0.5rem',
+    fontSize: '0.82rem',
+    color: 'var(--text-muted)',
+    fontWeight: 500,
   },
   footer: {
     borderTop: '1px solid var(--border-color)',

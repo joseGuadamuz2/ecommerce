@@ -127,12 +127,12 @@ export default function ProductList() {
           })}
         </div>
       ) : (
-        // ── VISTA DESKTOP: tabla ──
+        // ── VISTA DESKTOP: tabla con miniaturas ──
         <div style={styles.tableWrapper}>
           <table style={styles.table}>
             <thead>
               <tr>
-                <th style={styles.th}>Nombre</th>
+                <th style={styles.th}>Producto</th>
                 <th style={styles.th}>Precio</th>
                 <th style={styles.th}>Stock</th>
                 <th style={styles.th}>Tallas</th>
@@ -140,30 +140,57 @@ export default function ProductList() {
               </tr>
             </thead>
             <tbody>
-              {products.map(p => (
-                <tr key={p.id} style={styles.tr}>
-                  <td style={styles.td}>{p.name}</td>
-                  <td style={styles.td}>₡{p.price.toLocaleString()}</td>
-                  <td style={styles.td}>{p.stock}</td>
-                  <td style={styles.td}>{p.sizes?.join(', ') || '—'}</td>
-                  <td style={styles.td}>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button
-                        style={styles.editBtn}
-                        onClick={() => navigate(`/admin/productos/editar/${p.id}`)}
-                      >
-                        <Pencil size={15} />
-                      </button>
-                      <button
-                        style={styles.deleteBtn}
-                        onClick={() => handleDelete(p.id)}
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {products.map((p: any) => {
+                const img = p.product_images?.find((i: any) => i.is_main) || p.product_images?.[0]
+                return (
+                  <tr key={p.id} style={styles.tr}>
+                    {/* Celda con miniatura + nombre */}
+                    <td style={styles.td}>
+                      <div style={styles.productCell}>
+                        <div style={styles.thumbBox}>
+                          {img
+                            ? <img src={img.url} alt={p.name} style={styles.thumb} />
+                            : <span style={{ fontSize: '1.1rem' }}>👕</span>
+                          }
+                        </div>
+                        <span style={styles.productName}>{p.name}</span>
+                      </div>
+                    </td>
+                    <td style={styles.td}>₡{p.price.toLocaleString()}</td>
+                    <td style={styles.td}>
+                      <span style={{
+                        ...styles.stockBadge,
+                        background: p.stock > 0 ? 'var(--success-light)' : 'var(--danger-light)',
+                        color: p.stock > 0 ? 'var(--success)' : 'var(--danger)',
+                        borderColor: p.stock > 0 ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                      }}>
+                        {p.stock > 0 ? `${p.stock} uds` : 'Agotado'}
+                      </span>
+                    </td>
+                    <td style={{ ...styles.td, color: 'var(--text-muted)', fontSize: '0.88rem' }}>
+                      {p.sizes?.join(', ') || '—'}
+                    </td>
+                    <td style={styles.td}>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          style={styles.editBtn}
+                          onClick={() => navigate(`/admin/productos/editar/${p.id}`)}
+                          title="Editar"
+                        >
+                          <Pencil size={15} />
+                        </button>
+                        <button
+                          style={styles.deleteBtn}
+                          onClick={() => handleDelete(p.id)}
+                          title="Eliminar"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -251,14 +278,6 @@ const styles: Record<string, React.CSSProperties> = {
   mobileInfo: { flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem' },
   mobileName: { fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-main)', margin: 0 },
   mobilePrice: { fontSize: '0.85rem', color: 'var(--accent)', fontWeight: 600, margin: 0 },
-  stockBadge: {
-    fontSize: '0.72rem',
-    fontWeight: 700,
-    padding: '3px 10px',
-    borderRadius: '20px',
-    alignSelf: 'flex-start',
-    border: '1px solid transparent',
-  },
   mobileActions: { display: 'flex', flexDirection: 'column', gap: '0.5rem' },
   tableWrapper: {
     background: '#fff',
@@ -278,8 +297,49 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: 'uppercase',
     letterSpacing: '0.5px',
   },
-  tr: { borderBottom: '1px solid var(--border-color)' },
-  td: { padding: '1.1rem 1.25rem', fontSize: '0.92rem', color: 'var(--text-main)' },
+  tr: {
+    borderBottom: '1px solid var(--border-color)',
+    transition: 'background 0.15s',
+  },
+  td: { padding: '0.85rem 1.25rem', fontSize: '0.92rem', color: 'var(--text-main)' },
+
+  // Celda de producto con miniatura
+  productCell: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.85rem',
+  },
+  thumbBox: {
+    width: '44px',
+    height: '44px',
+    borderRadius: '8px',
+    overflow: 'hidden',
+    background: '#f1f5f9',
+    border: '1px solid var(--border-color)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  thumb: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover',
+  },
+  productName: {
+    fontWeight: 600,
+    fontSize: '0.92rem',
+    color: 'var(--text-main)',
+  },
+
+  stockBadge: {
+    display: 'inline-block',
+    fontSize: '0.75rem',
+    fontWeight: 700,
+    padding: '3px 10px',
+    borderRadius: '20px',
+    border: '1px solid transparent',
+  },
   editBtn: {
     padding: '0.5rem',
     background: 'var(--accent-light)',

@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import AdminLayout from '../components/AdminLayout'
-import { createProduct, getProductById, updateProduct } from '../services/productService'
-import { uploadImage } from '../services/productService'
+import { createProduct, getProductById, updateProduct, uploadImage, deleteProductImage, setMainImage } from '../services/productService'
 import { processImage } from '../hooks/useImageProcessor'
 import { ArrowLeft, Save, Upload, Trash2, Star } from 'lucide-react'
 
@@ -36,6 +35,7 @@ export default function ProductForm() {
 
   // Para edición: imágenes ya guardadas
   const [savedImages, setSavedImages] = useState<any[]>([])
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
 
   // Responsive helper
   const [isMobile, setIsMobile] = useState<boolean>(false)
@@ -59,11 +59,54 @@ export default function ProductForm() {
           sizes: product.sizes || [],
           colors: product.colors || [],
         })
-        setSavedImages(product.product_images || [])
+        // Ordenar: principal primero
+        const imgs = [...(product.product_images || [])]
+        imgs.sort((a: any, b: any) => (b.is_main ? 1 : 0) - (a.is_main ? 1 : 0))
+        setSavedImages(imgs)
         setLoading(false)
       })
     }
   }, [id])
+
+  // ── Drag & drop handlers para imágenes guardadas ──
+  const handleDragStart = (index: number) => setDragIndex(index)
+
+  const handleDrop = async (dropIndex: number) => {
+    if (dragIndex === null || dragIndex === dropIndex) return
+
+    const reordered = [...savedImages]
+    const [moved] = reordered.splice(dragIndex, 1)
+    reordered.splice(dropIndex, 0, moved)
+
+    // La primera siempre es la principal
+    const updated = reordered.map((img, i) => ({ ...img, is_main: i === 0 }))
+    setSavedImages(updated)
+    setDragIndex(null)
+
+    // Persistir en DB: marcar la nueva primera como principal
+    if (id && updated[0]) {
+      try {
+        await setMainImage(updated[0].id, id)
+      } catch {
+        setError('No se pudo actualizar el orden')
+      }
+    }
+  }
+
+  const handleDragOver = (e: React.DragEvent) => e.preventDefault()
+
+  const handleRemoveSaved = async (imageId: string, url: string) => {
+    try {
+      await deleteProductImage(imageId, url)
+      setSavedImages(prev => {
+        const updated = prev.filter(img => img.id !== imageId)
+        // Si se eliminó la principal, la nueva primera toma el puesto
+        return updated.map((img, i) => ({ ...img, is_main: i === 0 }))
+      })
+    } catch {
+      setError('No se pudo eliminar la imagen')
+    }
+  }
 
   const toggleItem = (list: string[], item: string) =>
     list.includes(item) ? list.filter(i => i !== item) : [...list, item]
@@ -92,7 +135,6 @@ export default function ProductForm() {
   const handleRemoveLocal = (index: number) => {
     setLocalImages(prev => {
       const updated = prev.filter((_, i) => i !== index)
-      // Si se eliminó la principal y quedan imágenes, la primera pasa a ser principal
       if (prev[index].isMain && updated.length > 0) {
         updated[0].isMain = true
       }
@@ -181,7 +223,7 @@ export default function ProductForm() {
             <span style={styles.uploadHint}>PNG, JPG hasta 20MB · Se recortan en cuadrado y comprimen automáticamente</span>
           </label>
 
-          {/* Previews locales */}
+          {/* Previews locales (imágenes nuevas aún no guardadas) */}
           {localImages.length > 0 && (
             <div style={styles.grid}>
               {localImages.map((img, i) => (
@@ -212,17 +254,47 @@ export default function ProductForm() {
             </div>
           )}
 
-          {/* Imágenes ya guardadas (modo edición) */}
+          {/* Imágenes guardadas con drag & drop */}
           {savedImages.length > 0 && (
             <>
-              <p style={{ fontSize: '0.85rem', color: '#888', margin: '0.5rem 0' }}>
-                Imágenes actuales:
+              <p style={styles.dragHint}>
+                Imágenes actuales · <strong>arrastrá para reordenar</strong> · la primera es la principal
               </p>
               <div style={styles.grid}>
-                {savedImages.map(img => (
-                  <div key={img.id} style={styles.imgCard}>
+                {savedImages.map((img, index) => (
+                  <div
+                    key={img.id}
+                    draggable
+                    onDragStart={() => handleDragStart(index)}
+                    onDragOver={handleDragOver}
+                    onDrop={() => handleDrop(index)}
+                    onDragEnd={() => setDragIndex(null)}
+                    style={{
+                      ...styles.imgCard,
+                      opacity: dragIndex === index ? 0.35 : 1,
+                      cursor: 'grab',
+                      outline: dragIndex !== null && dragIndex !== index
+                        ? '2px dashed var(--accent)'
+                        : '2px solid transparent',
+                      transform: dragIndex === index ? 'scale(0.96)' : 'scale(1)',
+                      transition: 'opacity 0.2s, outline 0.15s, transform 0.15s',
+                    }}
+                  >
                     <img src={img.url} alt="" style={styles.img} />
-                    {img.is_main && <div style={styles.mainBadge}>Principal</div>}
+                    {index === 0 && <div style={styles.mainBadge}>Principal</div>}
+                    {index !== 0 && (
+                      <div style={styles.orderBadge}>{index + 1}</div>
+                    )}
+                    <div style={styles.imgActions}>
+                      <button
+                        type="button"
+                        style={styles.deleteImgBtn}
+                        onClick={() => handleRemoveSaved(img.id, img.url)}
+                        title="Eliminar imagen"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -254,33 +326,33 @@ export default function ProductForm() {
           </div>
 
           <div style={{
-  ...styles.row,
-  flexDirection: isMobile ? 'column' : 'row',
-}}>
-  <div style={{ ...styles.field, flex: 1 }}>
-    <label style={styles.label}>Precio (₡) *</label>
-    <input
-      style={styles.input}
-      type="number"
-      min="0"
-      step="0.01"
-      value={form.price}
-      onChange={e => setForm({ ...form, price: e.target.value })}
-      required
-    />
-  </div>
-  <div style={{ ...styles.field, flex: 1 }}>
-    <label style={styles.label}>Stock *</label>
-    <input
-      style={styles.input}
-      type="number"
-      min="0"
-      value={form.stock}
-      onChange={e => setForm({ ...form, stock: e.target.value })}
-      required
-    />
-  </div>
-</div>
+            ...styles.row,
+            flexDirection: isMobile ? 'column' : 'row',
+          }}>
+            <div style={{ ...styles.field, flex: 1 }}>
+              <label style={styles.label}>Precio (₡) *</label>
+              <input
+                style={styles.input}
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.price}
+                onChange={e => setForm({ ...form, price: e.target.value })}
+                required
+              />
+            </div>
+            <div style={{ ...styles.field, flex: 1 }}>
+              <label style={styles.label}>Stock *</label>
+              <input
+                style={styles.input}
+                type="number"
+                min="0"
+                value={form.stock}
+                onChange={e => setForm({ ...form, stock: e.target.value })}
+                required
+              />
+            </div>
+          </div>
 
           <div style={styles.field}>
             <label style={styles.label}>Tallas disponibles</label>
@@ -413,6 +485,11 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-muted)',
     fontSize: '0.78rem',
   },
+  dragHint: {
+    fontSize: '0.82rem',
+    color: 'var(--text-muted)',
+    margin: '0.25rem 0',
+  },
   grid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
@@ -442,6 +519,21 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '20px',
     fontWeight: 700,
     boxShadow: '0 2px 6px rgba(99,102,241,0.3)',
+  },
+  orderBadge: {
+    position: 'absolute',
+    top: '6px',
+    left: '6px',
+    background: 'rgba(0,0,0,0.45)',
+    color: '#fff',
+    fontSize: '0.65rem',
+    width: '20px',
+    height: '20px',
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontWeight: 700,
   },
   imgActions: {
     position: 'absolute',

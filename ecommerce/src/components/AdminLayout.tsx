@@ -65,16 +65,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 )
               })}
 
-              <a
-                href="/"
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                onClick={() => { navigate("/"); setMenuOpen(false) }}
                 style={styles.drawerCatalogBtn}
-                onClick={() => setMenuOpen(false)}
               >
                 <Store size={18} color="#10b981" />
                 <span style={{ ...styles.drawerLabel, color: '#10b981', fontWeight: 600 }}>Ver tienda</span>
-              </a>
+              </button>
 
               <button style={styles.drawerLogout} onClick={handleLogout}>
                 <LogOut size={18} color="#f43f5e" />
@@ -136,10 +133,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           })}
         </nav>
 
-        <a
-          href="/"
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          onClick={() => navigate("/")}
           style={styles.catalogBtn}
           title="Ver tienda"
         >
@@ -147,7 +142,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {sidebarOpen && (
             <span style={{ ...styles.navLabel, color: '#10b981', fontWeight: 600 }}>Ver tienda</span>
           )}
-        </a>
+        </button>
 
         <button style={styles.logoutBtn} onClick={handleLogout}>
           <LogOut size={18} color="#f43f5e" />

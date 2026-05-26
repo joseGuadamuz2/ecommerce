@@ -106,23 +106,48 @@
   }
 
   export const getSettings = async () => {
-    const { data, error } = await supabase
-      .from('settings')
-      .select('*')
-      .single()
-    if (error) throw error
-    return data
-  }
+  const { data, error } = await supabase
+    .from('settings')
+    .select('*')
+    .single()
+  if (error) throw error
+  return data
+}
 
-  export const updateSettings = async (id: string, countryCode: string, number: string) => {
-    const { data, error } = await supabase
-      .from('settings')
-      .update({
-        whatsapp_country_code: countryCode,
-        whatsapp_number: number,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-    if (error) throw error
-    return data
-  }
+export const updateSettings = async (id: string, fields: Partial<{
+  whatsapp_country_code: string
+  whatsapp_number: string
+  store_name: string
+  store_logo_url: string | null
+  accent_color: string
+  banner_label: string
+  banner_title: string
+  banner_subtitle: string
+  product_label: string
+}>) => {
+  const { data, error } = await supabase
+    .from('settings')
+    .update({ ...fields, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+  return data
+}
+
+export const uploadLogo = async (file: File): Promise<string> => {
+  const ext = file.name.split('.').pop()
+  const fileName = `logo/store-logo.${ext}`
+
+  await supabase.storage.from('product-images').remove([fileName])
+
+  const { error } = await supabase.storage
+    .from('product-images')
+    .upload(fileName, file, { upsert: true })
+
+  if (error) throw error
+
+  const { data } = supabase.storage
+    .from('product-images')
+    .getPublicUrl(fileName)
+
+  return `${data.publicUrl}?t=${Date.now()}`
+}

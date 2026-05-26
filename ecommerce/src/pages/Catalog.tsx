@@ -14,6 +14,7 @@ export default function Catalog() {
   const [filterStock, setFilterStock] = useState('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [whatsappBase, setWhatsappBase] = useState('')
+  const [storeSettings, setStoreSettings] = useState<any>(null)
   const PRODUCTS_PER_PAGE = 8
   const navigate = useNavigate()
 
@@ -24,15 +25,21 @@ export default function Catalog() {
         const code = settings?.whatsapp_country_code || '506'
         const number = settings?.whatsapp_number?.replace(/\s/g, '') || ''
         setWhatsappBase(`${code}${number}`)
+        setStoreSettings(settings)
+        if (settings?.accent_color) {
+          document.documentElement.style.setProperty('--accent', settings.accent_color)
+        }
       })
       .finally(() => setLoading(false))
   }, [])
 
   const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (p.description && p.description.toLowerCase().includes(searchTerm.toLowerCase()))
-    const matchesStock = filterStock === 'all' ? true :
-                         filterStock === 'available' ? p.stock > 0 : p.stock === 0
+    const matchesSearch =
+      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (p.description && p.description.toLowerCase().includes(searchTerm.toLowerCase()))
+    const matchesStock =
+      filterStock === 'all' ? true :
+      filterStock === 'available' ? p.stock > 0 : p.stock === 0
     return matchesSearch && matchesStock
   })
 
@@ -65,17 +72,35 @@ export default function Catalog() {
     }
   }
 
+  const accentColor = storeSettings?.accent_color || 'var(--accent)'
+  const storeName = storeSettings?.store_name || 'Mi Tienda'
+  const productLabel = storeSettings?.product_label || 'productos'
+
   return (
     <div style={styles.page}>
+
       {/* Header */}
       <header style={styles.header}>
         <div style={styles.headerInner}>
+
+          {/* Logo */}
           <div style={styles.logo}>
-            <div style={styles.logoIconBg}>
-              <Shirt size={20} color="#fff" />
-            </div>
-            <span style={styles.logoText}>CamisasShop</span>
+            {storeSettings?.store_logo_url ? (
+              <img
+                src={storeSettings.store_logo_url}
+                alt={storeName}
+                style={{ height: '36px', maxWidth: '150px', objectFit: 'contain' }}
+              />
+            ) : (
+              <>
+                <div style={{ ...styles.logoIconBg, background: accentColor }}>
+                  <Shirt size={20} color="#fff" />
+                </div>
+                <span style={styles.logoText}>{storeName}</span>
+              </>
+            )}
           </div>
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <button
               style={{
@@ -99,23 +124,39 @@ export default function Catalog() {
 
       {/* Hero */}
       <div style={styles.hero}>
-        <div style={styles.heroOverlay}></div>
+        <div style={{
+          ...styles.heroOverlay,
+          background: `radial-gradient(circle at top right, ${accentColor}26, transparent 60%)`,
+        }} />
         <div style={styles.heroContent}>
-          <span style={styles.heroLabel}>Nueva Colección 2026</span>
-          <h1 style={styles.heroTitle}>Elegancia & Confort</h1>
-          <p style={styles.heroSub}>Camisas exclusivas confeccionadas con materiales de la más alta calidad</p>
+          {storeSettings?.banner_label && (
+            <span style={{
+              ...styles.heroLabel,
+              background: accentColor + '22',
+              color: accentColor,
+            }}>
+              {storeSettings.banner_label}
+            </span>
+          )}
+          <h1 style={styles.heroTitle}>
+            {storeSettings?.banner_title || storeName}
+          </h1>
+          {storeSettings?.banner_subtitle && (
+            <p style={styles.heroSub}>{storeSettings.banner_subtitle}</p>
+          )}
         </div>
       </div>
 
-      {/* Contenedor Principal */}
+      {/* Main */}
       <main style={styles.main}>
-        {/* Barra de Filtros y Búsqueda */}
+
+        {/* Filtros */}
         <div style={styles.filterBar}>
           <div style={styles.searchBox}>
             <Search size={18} color="var(--text-muted)" style={styles.searchIcon} />
             <input
               type="text"
-              placeholder="Buscar camisas..."
+              placeholder={`Buscar ${productLabel}...`}
               value={searchTerm}
               onChange={e => handleSearchChange(e.target.value)}
               style={styles.searchInput}
@@ -124,52 +165,39 @@ export default function Catalog() {
 
           <div style={styles.filterOptions}>
             <SlidersHorizontal size={15} color="var(--text-muted)" style={{ marginRight: '0.25rem' }} />
-            <button
-              onClick={() => handleFilterChange('all')}
-              style={{
-                ...styles.filterTab,
-                background: filterStock === 'all' ? 'var(--accent)' : 'transparent',
-                color: filterStock === 'all' ? '#fff' : 'var(--text-muted)',
-                borderColor: filterStock === 'all' ? 'var(--accent)' : 'var(--border-color)',
-              }}
-            >
-              Todos
-            </button>
-            <button
-              onClick={() => handleFilterChange('available')}
-              style={{
-                ...styles.filterTab,
-                background: filterStock === 'available' ? 'var(--accent)' : 'transparent',
-                color: filterStock === 'available' ? '#fff' : 'var(--text-muted)',
-                borderColor: filterStock === 'available' ? 'var(--accent)' : 'var(--border-color)',
-              }}
-            >
-              Disponibles
-            </button>
-            <button
-              onClick={() => handleFilterChange('outOfStock')}
-              style={{
-                ...styles.filterTab,
-                background: filterStock === 'outOfStock' ? 'var(--accent)' : 'transparent',
-                color: filterStock === 'outOfStock' ? '#fff' : 'var(--text-muted)',
-                borderColor: filterStock === 'outOfStock' ? 'var(--accent)' : 'var(--border-color)',
-              }}
-            >
-              Agotados
-            </button>
+            {(['all', 'available', 'outOfStock'] as const).map(f => {
+              const labels = { all: 'Todos', available: 'Disponibles', outOfStock: 'Agotados' }
+              const active = filterStock === f
+              return (
+                <button
+                  key={f}
+                  onClick={() => handleFilterChange(f)}
+                  style={{
+                    ...styles.filterTab,
+                    background: active ? accentColor : 'transparent',
+                    color: active ? '#fff' : 'var(--text-muted)',
+                    borderColor: active ? accentColor : 'var(--border-color)',
+                  }}
+                >
+                  {labels[f]}
+                </button>
+              )
+            })}
           </div>
         </div>
 
-        {/* Catálogo Grid */}
+        {/* Grid */}
         {loading ? (
           <div style={styles.loadingWrapper}>
-            <div style={styles.spinner}></div>
-            <p style={styles.loadingText}>Cargando catálogo exclusivo...</p>
+            <div style={{ ...styles.spinner, borderTopColor: accentColor }} />
+            <p style={styles.loadingText}>Cargando catálogo...</p>
           </div>
         ) : filteredProducts.length === 0 ? (
           <div style={styles.emptyState}>
             <span style={{ fontSize: '2.5rem' }}>🔍</span>
-            <h3 style={{ margin: '1rem 0 0.25rem', fontWeight: 700 }}>No se encontraron camisas</h3>
+            <h3 style={{ margin: '1rem 0 0.25rem', fontWeight: 700 }}>
+              No se encontraron {productLabel}
+            </h3>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>
               Intentá ajustar los filtros o términos de búsqueda.
             </p>
@@ -198,9 +226,9 @@ export default function Catalog() {
                     key={page}
                     style={{
                       ...styles.pageBtn,
-                      background: currentPage === page ? 'var(--accent)' : '#fff',
+                      background: currentPage === page ? accentColor : '#fff',
                       color: currentPage === page ? '#fff' : 'var(--text-main)',
-                      borderColor: currentPage === page ? 'var(--accent)' : 'var(--border-color)',
+                      borderColor: currentPage === page ? accentColor : 'var(--border-color)',
                       fontWeight: currentPage === page ? 700 : 500,
                     }}
                     onClick={() => setCurrentPage(page)}
@@ -218,7 +246,7 @@ export default function Catalog() {
                 </button>
 
                 <span style={styles.pageInfo}>
-                  {filteredProducts.length} productos · página {currentPage} de {totalPages}
+                  {filteredProducts.length} {productLabel} · página {currentPage} de {totalPages}
                 </span>
               </div>
             )}
@@ -230,10 +258,22 @@ export default function Catalog() {
       <footer style={styles.footer}>
         <div style={styles.footerInner}>
           <div style={styles.footerLogo}>
-            <Shirt size={18} color="var(--accent)" />
-            <span style={styles.footerLogoText}>CamisasShop</span>
+            {storeSettings?.store_logo_url ? (
+              <img
+                src={storeSettings.store_logo_url}
+                alt={storeName}
+                style={{ height: '24px', maxWidth: '100px', objectFit: 'contain' }}
+              />
+            ) : (
+              <>
+                <Shirt size={18} color={accentColor} />
+                <span style={styles.footerLogoText}>{storeName}</span>
+              </>
+            )}
           </div>
-          <p style={styles.footerCopy}>© 2026 CamisasShop · Confección Premium · Todos los derechos reservados</p>
+          <p style={styles.footerCopy}>
+            © {new Date().getFullYear()} {storeName} · Todos los derechos reservados
+          </p>
         </div>
       </footer>
     </div>
@@ -271,21 +311,17 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '0.6rem',
   },
   logoIconBg: {
-    background: 'var(--accent)',
     padding: '0.4rem',
     borderRadius: '8px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    boxShadow: '0 4px 10px rgba(99, 102, 241, 0.25)',
   },
   logoText: {
     fontSize: '1.2rem',
     fontWeight: 800,
     letterSpacing: '-0.3px',
-    background: 'linear-gradient(135deg, var(--text-main) 0%, #1e1b4b 100%)',
-    WebkitBackgroundClip: 'text',
-    WebkitTextFillColor: 'transparent',
+    color: 'var(--text-main)',
   },
   adminBtn: {
     display: 'flex',
@@ -312,7 +348,6 @@ const styles: Record<string, React.CSSProperties> = {
   heroOverlay: {
     position: 'absolute',
     inset: 0,
-    background: 'radial-gradient(circle at top right, rgba(99, 102, 241, 0.15), transparent 60%)',
     pointerEvents: 'none',
   },
   heroContent: {
@@ -320,28 +355,30 @@ const styles: Record<string, React.CSSProperties> = {
     maxWidth: '700px',
     margin: '0 auto',
     zIndex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '0.75rem',
   },
   heroLabel: {
     fontSize: '0.78rem',
     fontWeight: 700,
     letterSpacing: '1.5px',
-    color: 'var(--accent)',
     textTransform: 'uppercase',
-    background: 'rgba(99, 102, 241, 0.1)',
-    padding: '4px 12px',
+    padding: '4px 14px',
     borderRadius: '20px',
   },
   heroTitle: {
     fontSize: '2.8rem',
     fontWeight: 800,
-    marginTop: '1.25rem',
+    margin: 0,
     letterSpacing: '-1px',
     lineHeight: '1.15',
   },
   heroSub: {
     fontSize: '1.1rem',
     color: '#94a3b8',
-    marginTop: '0.85rem',
+    margin: 0,
     fontWeight: 400,
     lineHeight: '1.5',
   },
@@ -381,6 +418,7 @@ const styles: Record<string, React.CSSProperties> = {
     outline: 'none',
     background: '#fff',
     boxShadow: '0 2px 6px rgba(15, 23, 42, 0.02)',
+    boxSizing: 'border-box',
   },
   filterOptions: {
     display: 'flex',

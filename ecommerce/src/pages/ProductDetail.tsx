@@ -97,9 +97,9 @@ export default function ProductDetail() {
             ref={imgBoxRef}
             style={{
               ...styles.mainImgBox,
-              cursor: isMobile ? 'pointer' : (zoomed ? 'zoom-out' : 'zoom-in'),
+              cursor: 'zoom-in',
             }}
-            onClick={() => { if (isMobile && selectedImage) setLightboxOpen(true) }}
+            onClick={() => { if (selectedImage) setLightboxOpen(true) }}
             onMouseEnter={() => { if (!isMobile) setZoomed(true) }}
             onMouseLeave={() => { if (!isMobile) setZoomed(false) }}
             onMouseMove={!isMobile ? handleMouseMove : undefined}
@@ -108,12 +108,10 @@ export default function ProductDetail() {
               <>
                 <img src={selectedImage} alt={product.name} style={styles.mainImg} />
 
-                {/* Ícono de lupa en móvil */}
-                {isMobile && (
-                  <div style={styles.zoomHint}>
-                    <ZoomIn size={16} color="#fff" />
-                  </div>
-                )}
+                {/* Ícono de lupa — visible siempre */}
+                <div style={styles.zoomHint}>
+                  <ZoomIn size={16} color="#fff" />
+                </div>
 
                 {/* Lupa en desktop */}
                 {!isMobile && zoomed && (

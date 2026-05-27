@@ -173,6 +173,7 @@ export default function ProductForm() {
         price: parseFloat(form.price),
         discount_percent: parseInt(form.discount_percent) || 0,
         featured: form.featured,
+        is_active: true,
         sizes: [],
         colors: form.colors,
       }

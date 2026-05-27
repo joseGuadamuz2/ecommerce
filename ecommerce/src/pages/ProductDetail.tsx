@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getProductById, getSettings } from '../services/productService'
 import { ArrowLeft, MessageCircle } from 'lucide-react'
@@ -11,9 +11,13 @@ export default function ProductDetail() {
   const [loading, setLoading] = useState(true)
   const [whatsappBase, setWhatsappBase] = useState('')
 
+  // Zoom state
+  const [zoomed, setZoomed] = useState(false)
+  const [lensPos, setLensPos] = useState({ x: 0, y: 0 })
+  const imgBoxRef = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
     if (!id) return
-
     Promise.all([
       getProductById(id),
       getSettings(),
@@ -21,11 +25,9 @@ export default function ProductDetail() {
       setProduct(p)
       const main = p.product_images?.find((i: any) => i.is_main) || p.product_images?.[0]
       setSelectedImage(main?.url || null)
-
       const code = settings?.whatsapp_country_code || '506'
       const number = settings?.whatsapp_number?.replace(/\s/g, '') || ''
       setWhatsappBase(`${code}${number}`)
-
       setLoading(false)
     })
   }, [id])
@@ -43,13 +45,30 @@ export default function ProductDetail() {
     window.open(`https://wa.me/${whatsappBase}?text=${msg}`, '_blank')
   }
 
+  const ZOOM_FACTOR = 2.5
+  const LENS_SIZE = 120
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const box = imgBoxRef.current
+    if (!box) return
+    const rect = box.getBoundingClientRect()
+    let x = e.clientX - rect.left
+    let y = e.clientY - rect.top
+    // Clamp so lens stays inside
+    x = Math.max(LENS_SIZE / 2, Math.min(rect.width - LENS_SIZE / 2, x))
+    y = Math.max(LENS_SIZE / 2, Math.min(rect.height - LENS_SIZE / 2, y))
+    setLensPos({ x, y })
+  }
+
   if (loading) return <p style={{ padding: '2rem' }}>Cargando...</p>
   if (!product) return <p style={{ padding: '2rem' }}>Producto no encontrado.</p>
 
-  // Ordenar imágenes: principal primero
   const sortedImages = [...(product.product_images || [])].sort(
     (a: any, b: any) => (b.is_main ? 1 : 0) - (a.is_main ? 1 : 0)
   )
+
+  const bgX = lensPos.x * ZOOM_FACTOR - LENS_SIZE / 2
+  const bgY = lensPos.y * ZOOM_FACTOR - LENS_SIZE / 2
 
   return (
     <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1.5rem' }}>
@@ -60,12 +79,44 @@ export default function ProductDetail() {
       <div style={styles.layout}>
         {/* Imágenes */}
         <div style={styles.gallery}>
-          <div style={styles.mainImgBox}>
-            {selectedImage
-              ? <img src={selectedImage} alt={product.name} style={styles.mainImg} />
-              : <span style={{ fontSize: '4rem' }}>👕</span>
-            }
+          <div
+            ref={imgBoxRef}
+            style={{ ...styles.mainImgBox, cursor: zoomed ? 'zoom-out' : 'zoom-in' }}
+            onMouseEnter={() => setZoomed(true)}
+            onMouseLeave={() => setZoomed(false)}
+            onMouseMove={handleMouseMove}
+          >
+            {selectedImage ? (
+              <>
+                <img src={selectedImage} alt={product.name} style={styles.mainImg} />
+                {/* Zoom lens */}
+                {zoomed && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      width: `${LENS_SIZE}px`,
+                      height: `${LENS_SIZE}px`,
+                      borderRadius: '50%',
+                      border: '2px solid rgba(255,255,255,0.8)',
+                      boxShadow: '0 4px 20px rgba(0,0,0,0.25)',
+                      overflow: 'hidden',
+                      pointerEvents: 'none',
+                      left: lensPos.x - LENS_SIZE / 2,
+                      top: lensPos.y - LENS_SIZE / 2,
+                      zIndex: 10,
+                      backgroundImage: `url(${selectedImage})`,
+                      backgroundSize: `${imgBoxRef.current ? imgBoxRef.current.offsetWidth * ZOOM_FACTOR : 600}px auto`,
+                      backgroundPosition: `-${bgX}px -${bgY}px`,
+                      backgroundRepeat: 'no-repeat',
+                    }}
+                  />
+                )}
+              </>
+            ) : (
+              <span style={{ fontSize: '4rem' }}>👕</span>
+            )}
           </div>
+
           {sortedImages.length > 1 && (
             <div style={styles.thumbs}>
               {sortedImages.map((img: any) => (
@@ -89,7 +140,6 @@ export default function ProductDetail() {
 
         {/* Info */}
         <div style={styles.info}>
-          {/* Código de producto */}
           <p style={styles.productCode}>
             Código: <strong>{product.id.slice(0, 8).toUpperCase()}</strong>
           </p>
@@ -123,25 +173,18 @@ export default function ProductDetail() {
             </div>
           )}
 
-          <p style={{
-            ...styles.stock,
-            color: product.stock > 0 ? 'var(--success)' : 'var(--danger)',
-          }}>
-            {product.stock > 0 ? `✓ ${product.stock} unidades disponibles` : '✗ Agotado'}
-          </p>
-
-          {/* Botón WhatsApp */}
+          {/* Botón WhatsApp — sin restricción de stock */}
           <button
             onClick={handleWhatsApp}
-            disabled={product.stock === 0 || !whatsappBase}
+            disabled={!whatsappBase}
             style={{
               ...styles.whatsappBtn,
-              opacity: product.stock === 0 || !whatsappBase ? 0.5 : 1,
-              cursor: product.stock === 0 || !whatsappBase ? 'not-allowed' : 'pointer',
+              opacity: !whatsappBase ? 0.5 : 1,
+              cursor: !whatsappBase ? 'not-allowed' : 'pointer',
             }}
           >
             <MessageCircle size={20} />
-            {product.stock === 0 ? 'Agotado' : 'Pedir por WhatsApp'}
+            Pedir por WhatsApp
           </button>
         </div>
       </div>
@@ -169,6 +212,8 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#f1f5f9', display: 'flex',
     alignItems: 'center', justifyContent: 'center',
     border: '1px solid var(--border-color)',
+    position: 'relative',
+    userSelect: 'none',
   },
   mainImg: { width: '100%', height: '100%', objectFit: 'cover' },
   thumbs: { display: 'flex', gap: '0.5rem', flexWrap: 'wrap' },
@@ -201,7 +246,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 600, color: 'var(--text-muted)',
     border: '1px solid var(--border-color)',
   },
-  stock: { fontWeight: 700, fontSize: '0.9rem' },
   whatsappBtn: {
     display: 'flex',
     alignItems: 'center',

@@ -20,12 +20,13 @@ export default function AdminDashboard() {
   const totalImages = products.reduce((acc, p) => acc + (p.product_images?.length || 0), 0)
   const destacados = products.filter(p => p.featured).length
   const conDescuento = products.filter(p => (p.discount_percent ?? 0) > 0).length
+  const activos = products.filter(p => (p.is_active ?? true)).length
 
   const stats = [
     { label: 'Productos', value: totalProducts, icon: Package, color: '#4f46e5', bg: '#ede9fe' },
-    { label: 'Imágenes', value: totalImages, icon: Image, color: '#0891b2', bg: '#e0f2fe' },
+    { label: 'Visibles', value: activos, icon: TrendingUp, color: '#059669', bg: '#d1fae5' },
     { label: 'Destacados', value: destacados, icon: AlertTriangle, color: '#d97706', bg: '#fef3c7' },
-    { label: 'Con descuento', value: conDescuento, icon: TrendingUp, color: '#059669', bg: '#d1fae5' },
+    { label: 'Con descuento', value: conDescuento, icon: Image, color: '#0891b2', bg: '#e0f2fe' },
   ]
 
   return (

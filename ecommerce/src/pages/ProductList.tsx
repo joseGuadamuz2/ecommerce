@@ -2,16 +2,18 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Swal from 'sweetalert2'
 import AdminLayout from '../components/AdminLayout'
-import { getProducts, deleteProduct, getSettings } from '../services/productService'
+import { getProducts, deleteProduct, updateProduct, getSettings } from '../services/productService'
 import type { Product } from '../types/product'
-import { Plus, Pencil, Trash2, FileDown } from 'lucide-react'
+import { Plus, Pencil, Trash2, FileDown, Eye, EyeOff } from 'lucide-react'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { generateCatalogPDF } from '../services/pdfService'
+import PdfLoadingOverlay from '../components/PdfLoadingOverlay'
 
 export default function ProductList() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
+  const [togglingId, setTogglingId] = useState<string | null>(null)
   const navigate = useNavigate()
   const isMobile = useIsMobile()
 
@@ -52,6 +54,26 @@ export default function ProductList() {
       showConfirmButton: false,
       confirmButtonColor: '#6366f1',
     })
+  }
+
+  const handleToggleActive = async (product: any) => {
+    setTogglingId(product.id)
+    const newState = !(product.is_active ?? true)
+    try {
+      await updateProduct(product.id, { is_active: newState })
+      setProducts(prev =>
+        prev.map(p => p.id === product.id ? { ...p, is_active: newState } : p)
+      )
+    } catch {
+      Swal.fire({
+        title: 'Error',
+        text: 'No se pudo cambiar el estado del producto.',
+        icon: 'error',
+        confirmButtonColor: '#6366f1',
+      })
+    } finally {
+      setTogglingId(null)
+    }
   }
 
   const handleExportPDF = async () => {
@@ -116,29 +138,61 @@ export default function ProductList() {
         <div style={styles.cardList}>
           {products.map((p: any) => {
             const img = p.product_images?.find((i: any) => i.is_main) || p.product_images?.[0]
+            const isActive = p.is_active ?? true
+            const isToggling = togglingId === p.id
             return (
-              <div key={p.id} style={styles.mobileCard}>
+              <div key={p.id} style={{
+                ...styles.mobileCard,
+                opacity: isActive ? 1 : 0.55,
+                borderLeft: `3px solid ${isActive ? 'var(--accent)' : '#d1d5db'}`,
+              }}>
                 <div style={styles.mobileImgBox}>
                   {img
-                    ? <img src={img.url} alt={p.name} style={styles.mobileImg} />
+                    ? <img src={img.url} alt={p.name} style={{ ...styles.mobileImg, filter: isActive ? 'none' : 'grayscale(80%)' }} />
                     : <span style={{ fontSize: '1.5rem' }}>📦</span>
                   }
                 </div>
                 <div style={styles.mobileInfo}>
                   <p style={styles.mobileName}>{p.name}</p>
                   <p style={styles.mobilePrice}>₡{p.price.toLocaleString()}</p>
-                  {p.discount_percent > 0 && (
-                    <span style={{ ...styles.stockBadge, background: '#fef2f2', color: '#ef4444', borderColor: '#fecaca' }}>
-                      -{p.discount_percent}%
+                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                    <span style={{
+                      ...styles.badge,
+                      background: isActive ? '#f0fdf4' : '#f8fafc',
+                      color: isActive ? '#16a34a' : '#9ca3af',
+                      borderColor: isActive ? '#bbf7d0' : '#e5e7eb',
+                    }}>
+                      {isActive ? '● Visible' : '○ Oculto'}
                     </span>
-                  )}
-                  {p.featured && (
-                    <span style={{ ...styles.stockBadge, background: '#fefce8', color: '#d97706', borderColor: '#fde68a' }}>
-                      ⭐ Destacado
-                    </span>
-                  )}
+                    {p.discount_percent > 0 && (
+                      <span style={{ ...styles.badge, background: '#fef2f2', color: '#ef4444', borderColor: '#fecaca' }}>
+                        -{p.discount_percent}%
+                      </span>
+                    )}
+                    {p.featured && (
+                      <span style={{ ...styles.badge, background: '#fefce8', color: '#d97706', borderColor: '#fde68a' }}>
+                        ⭐
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div style={styles.mobileActions}>
+                  <button
+                    style={{
+                      ...styles.toggleBtn,
+                      background: isActive ? '#f0fdf4' : '#f8fafc',
+                      color: isActive ? '#16a34a' : '#9ca3af',
+                      borderColor: isActive ? '#bbf7d0' : '#e5e7eb',
+                    }}
+                    onClick={() => handleToggleActive(p)}
+                    disabled={isToggling}
+                    title={isActive ? 'Ocultar del catálogo' : 'Mostrar en catálogo'}
+                  >
+                    {isToggling
+                      ? <span style={styles.spinner} />
+                      : isActive ? <EyeOff size={15} /> : <Eye size={15} />
+                    }
+                  </button>
                   <button
                     style={styles.editBtn}
                     onClick={() => navigate(`/admin/productos/editar/${p.id}`)}
@@ -165,28 +219,60 @@ export default function ProductList() {
                 <th style={styles.th}>Producto</th>
                 <th style={styles.th}>Precio</th>
                 <th style={styles.th}>Descuento</th>
+                <th style={styles.th}>Estado</th>
                 <th style={styles.th}>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {products.map((p: any) => {
                 const img = p.product_images?.find((i: any) => i.is_main) || p.product_images?.[0]
+                const isActive = p.is_active ?? true
+                const isToggling = togglingId === p.id
                 return (
-                  <tr key={p.id} style={styles.tr}>
+                  <tr key={p.id} style={{
+                    ...styles.tr,
+                    background: isActive ? 'transparent' : '#fafafa',
+                  }}>
                     <td style={styles.td}>
                       <div style={styles.productCell}>
                         <div style={styles.thumbBox}>
                           {img
-                            ? <img src={img.url} alt={p.name} style={styles.thumb} />
+                            ? <img src={img.url} alt={p.name} style={{ ...styles.thumb, filter: isActive ? 'none' : 'grayscale(80%)' }} />
                             : <span style={{ fontSize: '1.1rem' }}>📦</span>
                           }
                         </div>
-                        <span style={styles.productName}>{p.name}</span>
+                        <div>
+                          <span style={{ ...styles.productName, color: isActive ? 'var(--text-main)' : 'var(--text-muted)' }}>
+                            {p.name}
+                          </span>
+                          {p.featured && <span style={{ ...styles.badge, marginLeft: '0.5rem', background: '#fefce8', color: '#d97706', borderColor: '#fde68a' }}>⭐</span>}
+                        </div>
                       </div>
                     </td>
                     <td style={styles.td}>₡{p.price.toLocaleString()}</td>
                     <td style={{ ...styles.td, color: 'var(--text-muted)', fontSize: '0.88rem' }}>
                       {p.discount_percent > 0 ? `-${p.discount_percent}%` : '—'}
+                    </td>
+                    <td style={styles.td}>
+                      <button
+                        onClick={() => handleToggleActive(p)}
+                        disabled={isToggling}
+                        style={{
+                          ...styles.statusToggle,
+                          background: isActive ? '#f0fdf4' : '#f8fafc',
+                          color: isActive ? '#16a34a' : '#9ca3af',
+                          borderColor: isActive ? '#bbf7d0' : '#e5e7eb',
+                        }}
+                        title={isActive ? 'Clic para ocultar' : 'Clic para mostrar'}
+                      >
+                        {isToggling ? (
+                          <span style={styles.spinner} />
+                        ) : isActive ? (
+                          <><Eye size={13} /> Visible</>
+                        ) : (
+                          <><EyeOff size={13} /> Oculto</>
+                        )}
+                      </button>
                     </td>
                     <td style={styles.td}>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -213,6 +299,7 @@ export default function ProductList() {
           </table>
         </div>
       )}
+      <PdfLoadingOverlay visible={exporting} />
     </AdminLayout>
   )
 }
@@ -265,11 +352,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-muted)',
     boxShadow: 'var(--card-shadow)',
   },
-  cardList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.85rem',
-  },
+  cardList: { display: 'flex', flexDirection: 'column', gap: '0.85rem' },
   mobileCard: {
     background: '#fff',
     borderRadius: '12px',
@@ -279,6 +362,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: '1rem',
     boxShadow: 'var(--card-shadow)',
+    transition: 'opacity 0.2s',
   },
   mobileImgBox: {
     width: '52px',
@@ -293,10 +377,10 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
   mobileImg: { width: '100%', height: '100%', objectFit: 'cover' },
-  mobileInfo: { flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem' },
+  mobileInfo: { flex: 1, display: 'flex', flexDirection: 'column', gap: '0.3rem' },
   mobileName: { fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-main)', margin: 0 },
   mobilePrice: { fontSize: '0.85rem', color: 'var(--accent)', fontWeight: 600, margin: 0 },
-  mobileActions: { display: 'flex', flexDirection: 'column', gap: '0.5rem' },
+  mobileActions: { display: 'flex', flexDirection: 'column', gap: '0.4rem' },
   tableWrapper: {
     background: '#fff',
     borderRadius: '16px',
@@ -320,11 +404,7 @@ const styles: Record<string, React.CSSProperties> = {
     transition: 'background 0.15s',
   },
   td: { padding: '0.85rem 1.25rem', fontSize: '0.92rem', color: 'var(--text-main)' },
-  productCell: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.85rem',
-  },
+  productCell: { display: 'flex', alignItems: 'center', gap: '0.85rem' },
   thumbBox: {
     width: '44px',
     height: '44px',
@@ -337,23 +417,40 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     flexShrink: 0,
   },
-  thumb: {
-    width: '100%',
-    height: '100%',
-    objectFit: 'cover',
-  },
-  productName: {
-    fontWeight: 600,
-    fontSize: '0.92rem',
-    color: 'var(--text-main)',
-  },
-  stockBadge: {
-    display: 'inline-block',
-    fontSize: '0.75rem',
+  thumb: { width: '100%', height: '100%', objectFit: 'cover' },
+  productName: { fontWeight: 600, fontSize: '0.92rem' },
+  badge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    fontSize: '0.72rem',
     fontWeight: 700,
-    padding: '3px 10px',
+    padding: '3px 9px',
     borderRadius: '20px',
     border: '1px solid transparent',
+  },
+  statusToggle: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.35rem',
+    padding: '5px 12px',
+    borderRadius: '20px',
+    border: '1px solid',
+    cursor: 'pointer',
+    fontSize: '0.8rem',
+    fontWeight: 700,
+    transition: 'all 0.2s',
+  },
+  toggleBtn: {
+    padding: '0.45rem',
+    borderRadius: '8px',
+    border: '1px solid',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'all 0.2s',
+    width: '30px',
+    height: '30px',
   },
   editBtn: {
     padding: '0.5rem',
@@ -374,5 +471,14 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--danger)',
     display: 'flex',
     transition: 'all 0.2s',
+  },
+  spinner: {
+    display: 'inline-block',
+    width: '12px',
+    height: '12px',
+    border: '2px solid currentColor',
+    borderTopColor: 'transparent',
+    borderRadius: '50%',
+    animation: 'spin 0.7s linear infinite',
   },
 }

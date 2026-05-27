@@ -5,6 +5,7 @@ import type { Product } from '../types/product'
 import ProductCard from '../components/ProductCard'
 import { Settings, Search, SlidersHorizontal, FileDown, Store } from 'lucide-react'
 import { generateCatalogPDF } from '../services/pdfService'
+import PdfLoadingOverlay from '../components/PdfLoadingOverlay'
 
 type FilterType = 'all' | 'featured' | 'discount' | 'recent'
 
@@ -36,6 +37,9 @@ export default function Catalog() {
   }, [])
 
   const filteredProducts = products.filter(p => {
+    // Ocultar productos deshabilitados
+    if (!((p as any).is_active ?? true)) return false
+
     const matchesSearch =
       p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (p.description && p.description.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -268,6 +272,8 @@ export default function Catalog() {
           </>
         )}
       </main>
+
+      <PdfLoadingOverlay visible={exporting} />
 
       {/* Footer */}
       <footer style={styles.footer}>

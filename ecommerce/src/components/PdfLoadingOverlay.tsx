@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 const STEPS = [
   { icon: '📋', text: 'Preparando el catálogo...' },
@@ -11,61 +12,64 @@ const STEPS = [
 export default function PdfLoadingOverlay({ visible }: { visible: boolean }) {
   const [stepIndex, setStepIndex] = useState(0)
   const [dots, setDots] = useState('')
-  const [fadeIn, setFadeIn] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  // Montar solo en cliente
+  useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
-    if (visible) {
-      setStepIndex(0)
-      setFadeIn(false)
-      setTimeout(() => setFadeIn(true), 10)
-    }
+    if (visible) setStepIndex(0)
   }, [visible])
 
   useEffect(() => {
     if (!visible) return
-    const stepTimer = setInterval(() => {
+    const t = setInterval(() => {
       setStepIndex(prev => (prev + 1) % STEPS.length)
     }, 1800)
-    return () => clearInterval(stepTimer)
+    return () => clearInterval(t)
   }, [visible])
 
   useEffect(() => {
     if (!visible) return
-    const dotTimer = setInterval(() => {
+    const t = setInterval(() => {
       setDots(prev => prev.length >= 3 ? '' : prev + '.')
     }, 400)
-    return () => clearInterval(dotTimer)
+    return () => clearInterval(t)
   }, [visible])
 
-  if (!visible) return null
+  // Bloquear scroll del body mientras está visible
+  useEffect(() => {
+    if (visible) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [visible])
+
+  if (!mounted || !visible) return null
 
   const step = STEPS[stepIndex]
 
-  return (
-    <div style={{
-      ...styles.overlay,
-      opacity: fadeIn ? 1 : 0,
-      transition: 'opacity 0.3s ease',
-    }}>
+  // Portal directo al body para evitar problemas de stacking context en móvil
+  return createPortal(
+    <div style={styles.overlay}>
       <div style={styles.card}>
 
-        {/* Ícono animado */}
+        {/* Anillos giratorios + ícono */}
         <div style={styles.iconWrapper}>
-          <div style={styles.iconRing} />
-          <div style={styles.iconRing2} />
+          <div style={styles.ring1} />
+          <div style={styles.ring2} />
           <span style={styles.icon}>{step.icon}</span>
         </div>
 
-        {/* Título */}
         <p style={styles.title}>Generando PDF</p>
 
-        {/* Paso actual */}
         <div style={styles.stepRow}>
           <p style={styles.stepText}>{step.text}</p>
           <span style={styles.dots}>{dots}</span>
         </div>
 
-        {/* Barra de progreso animada */}
         <div style={styles.progressTrack}>
           <div style={{
             ...styles.progressBar,
@@ -73,15 +77,14 @@ export default function PdfLoadingOverlay({ visible }: { visible: boolean }) {
           }} />
         </div>
 
-        {/* Steps indicadores */}
-        <div style={styles.stepsRow}>
+        <div style={styles.dotsRow}>
           {STEPS.map((_, i) => (
             <div
               key={i}
               style={{
-                ...styles.stepDot,
+                ...styles.dot,
                 background: i <= stepIndex ? 'var(--accent)' : '#e2e8f0',
-                transform: i === stepIndex ? 'scale(1.3)' : 'scale(1)',
+                transform: i === stepIndex ? 'scale(1.35)' : 'scale(1)',
                 transition: 'all 0.3s ease',
               }}
             />
@@ -90,18 +93,21 @@ export default function PdfLoadingOverlay({ visible }: { visible: boolean }) {
 
         <p style={styles.hint}>Esto puede tomar unos segundos</p>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
 const styles: Record<string, React.CSSProperties> = {
   overlay: {
     position: 'fixed',
-    inset: 0,
-    background: 'rgba(15, 23, 42, 0.65)',
-    backdropFilter: 'blur(6px)',
-    WebkitBackdropFilter: 'blur(6px)',
-    zIndex: 9999,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    // Sin backdrop-filter — causa stacking context en móvil
+    background: 'rgba(15, 23, 42, 0.75)',
+    zIndex: 99999,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -112,13 +118,13 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '24px',
     padding: '2.5rem 2rem',
     width: '100%',
-    maxWidth: '360px',
+    maxWidth: '340px',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     gap: '1rem',
-    boxShadow: '0 25px 60px rgba(15, 23, 42, 0.25)',
-    border: '1px solid rgba(226, 232, 240, 0.8)',
+    boxShadow: '0 25px 60px rgba(15, 23, 42, 0.35)',
+    border: '1px solid #e2e8f0',
   },
   iconWrapper: {
     position: 'relative',
@@ -129,7 +135,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     marginBottom: '0.25rem',
   },
-  iconRing: {
+  ring1: {
     position: 'absolute',
     inset: 0,
     borderRadius: '50%',
@@ -138,9 +144,9 @@ const styles: Record<string, React.CSSProperties> = {
     borderRightColor: 'var(--accent)',
     animation: 'spin 1s linear infinite',
   },
-  iconRing2: {
+  ring2: {
     position: 'absolute',
-    inset: '8px',
+    inset: '9px',
     borderRadius: '50%',
     border: '2px solid transparent',
     borderBottomColor: 'var(--accent)',
@@ -163,14 +169,13 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: '0.1rem',
-    height: '22px',
+    minHeight: '22px',
   },
   stepText: {
     fontSize: '0.88rem',
     color: 'var(--text-muted)',
     margin: 0,
     fontWeight: 500,
-    transition: 'all 0.3s ease',
   },
   dots: {
     fontSize: '0.88rem',
@@ -194,12 +199,12 @@ const styles: Record<string, React.CSSProperties> = {
     animation: 'pdfProgress linear forwards',
     width: '0%',
   },
-  stepsRow: {
+  dotsRow: {
     display: 'flex',
     gap: '0.5rem',
     alignItems: 'center',
   },
-  stepDot: {
+  dot: {
     width: '8px',
     height: '8px',
     borderRadius: '50%',

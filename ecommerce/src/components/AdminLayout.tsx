@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../services/supabaseClient'
-import { LayoutDashboard, Package, LogOut, Menu, X, Shirt, Settings, Store } from 'lucide-react'
+import { LayoutDashboard, Package, LogOut, Menu, X, UserStar, Settings, Store } from 'lucide-react'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 const navItems = [
@@ -33,9 +33,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <header style={styles.topbar}>
           <div style={styles.topbarLogo}>
             <div style={styles.mobileLogoBg}>
-              <Shirt size={16} color="#fff" />
+              <UserStar size={16} color="#fff" />
             </div>
-            <span style={styles.topbarTitle}>CamisasAdmin</span>
+            <span style={styles.topbarTitle}>Administrador</span>
           </div>
           <button style={styles.menuBtn} onClick={() => setMenuOpen(!menuOpen)}>
             {menuOpen ? <X size={22} color="#fff" /> : <Menu size={22} color="#fff" />}
@@ -93,9 +93,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <aside style={{ ...styles.sidebar, width: sidebarOpen ? '250px' : '72px' }}>
         <div style={styles.logo}>
           <div style={styles.logoIconBg}>
-            <Shirt size={20} color="#fff" />
+            <UserStar size={20} color="#fff" />
           </div>
-          {sidebarOpen && <span style={styles.logoText}>CamisasAdmin</span>}
+          {sidebarOpen && <span style={styles.logoText}>Administrador</span>}
         </div>
 
         <button style={styles.toggleBtn} onClick={() => setSidebarOpen(!sidebarOpen)}>

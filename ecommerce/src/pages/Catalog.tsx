@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { getProducts, getSettings } from '../services/productService'
 import type { Product } from '../types/product'
 import ProductCard from '../components/ProductCard'
-import { Shirt, Settings, Search, SlidersHorizontal, FileDown } from 'lucide-react'
+import {Settings, Search, SlidersHorizontal, FileDown, Store } from 'lucide-react'
 import { generateCatalogPDF } from '../services/pdfService'
 
 export default function Catalog() {
@@ -94,7 +94,7 @@ export default function Catalog() {
             ) : (
               <>
                 <div style={{ ...styles.logoIconBg, background: accentColor }}>
-                  <Shirt size={20} color="#fff" />
+                  <Store size={20} color="#fff" />
                 </div>
                 <span style={styles.logoText}>{storeName}</span>
               </>
@@ -266,7 +266,7 @@ export default function Catalog() {
               />
             ) : (
               <>
-                <Shirt size={18} color={accentColor} />
+                <Store size={18} color={accentColor} />
                 <span style={styles.footerLogoText}>{storeName}</span>
               </>
             )}

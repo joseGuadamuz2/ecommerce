@@ -6,7 +6,6 @@ import { createProduct, getProductById, updateProduct, uploadImage, deleteProduc
 import { processImage } from '../hooks/useImageProcessor'
 import { ArrowLeft, Save, Upload, Trash2, Star } from 'lucide-react'
 
-const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL']
 const COLORS = ['Blanco', 'Negro', 'Azul', 'Rojo', 'Verde', 'Gris', 'Amarillo']
 
 interface LocalImage {
@@ -29,8 +28,8 @@ export default function ProductForm() {
     name: '',
     description: '',
     price: '',
-    stock: '',
-    sizes: [] as string[],
+    discount_percent: '0',
+    featured: false,
     colors: [] as string[],
   })
 
@@ -53,8 +52,8 @@ export default function ProductForm() {
           name: product.name,
           description: product.description || '',
           price: String(product.price),
-          stock: String(product.stock),
-          sizes: product.sizes || [],
+          discount_percent: String(product.discount_percent ?? 0),
+          featured: product.featured ?? false,
           colors: product.colors || [],
         })
         const imgs = [...(product.product_images || [])]
@@ -65,7 +64,6 @@ export default function ProductForm() {
     }
   }, [id])
 
-  // ── Drag & drop ──
   const handleDragStart = (index: number) => setDragIndex(index)
 
   const handleDrop = async (dropIndex: number) => {
@@ -173,8 +171,9 @@ export default function ProductForm() {
         name: form.name,
         description: form.description,
         price: parseFloat(form.price),
-        stock: parseInt(form.stock),
-        sizes: form.sizes,
+        discount_percent: parseInt(form.discount_percent) || 0,
+        featured: form.featured,
+        sizes: [],
         colors: form.colors,
       }
 
@@ -225,6 +224,10 @@ export default function ProductForm() {
 
   if (loading) return <AdminLayout><p>Cargando...</p></AdminLayout>
 
+  const discountVal = parseInt(form.discount_percent) || 0
+  const originalPrice = parseFloat(form.price) || 0
+  const finalPrice = discountVal > 0 ? originalPrice * (1 - discountVal / 100) : originalPrice
+
   return (
     <AdminLayout>
       <div style={styles.header}>
@@ -253,7 +256,6 @@ export default function ProductForm() {
             <span style={styles.uploadHint}>PNG, JPG hasta 20MB · Se recortan en cuadrado y comprimen automáticamente</span>
           </label>
 
-          {/* Previews locales */}
           {localImages.length > 0 && (
             <div style={styles.grid}>
               {localImages.map((img, i) => (
@@ -284,7 +286,6 @@ export default function ProductForm() {
             </div>
           )}
 
-          {/* Imágenes guardadas con drag & drop */}
           {savedImages.length > 0 && (
             <>
               <p style={styles.dragHint}>
@@ -370,37 +371,50 @@ export default function ProductForm() {
               />
             </div>
             <div style={{ ...styles.field, flex: 1 }}>
-              <label style={styles.label}>Stock *</label>
+              <label style={styles.label}>Descuento (%)</label>
               <input
                 style={styles.input}
                 type="number"
                 min="0"
-                value={form.stock}
-                onChange={e => setForm({ ...form, stock: e.target.value })}
-                required
+                max="99"
+                value={form.discount_percent}
+                onChange={e => setForm({ ...form, discount_percent: e.target.value })}
               />
+              {discountVal > 0 && originalPrice > 0 && (
+                <span style={styles.discountPreview}>
+                  Precio final: ₡{finalPrice.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                </span>
+              )}
             </div>
           </div>
 
+          {/* Toggle Destacado */}
           <div style={styles.field}>
-            <label style={styles.label}>Tallas disponibles</label>
-            <div style={styles.tagGroup}>
-              {SIZES.map(size => (
-                <button
-                  key={size}
-                  type="button"
-                  onClick={() => setForm({ ...form, sizes: toggleItem(form.sizes, size) })}
-                  style={{
-                    ...styles.tag,
-                    background: form.sizes.includes(size) ? 'var(--accent)' : '#f1f5f9',
-                    color: form.sizes.includes(size) ? '#fff' : 'var(--text-muted)',
-                    boxShadow: form.sizes.includes(size) ? '0 4px 10px rgba(99, 102, 241, 0.2)' : 'none',
-                    borderColor: form.sizes.includes(size) ? 'var(--accent)' : 'transparent',
-                  }}
-                >
-                  {size}
-                </button>
-              ))}
+            <label style={styles.label}>Opciones</label>
+            <div
+              style={{
+                ...styles.toggleRow,
+                background: form.featured ? '#fef9c3' : '#f8fafc',
+                borderColor: form.featured ? '#fbbf24' : 'var(--border-color)',
+              }}
+              onClick={() => setForm({ ...form, featured: !form.featured })}
+            >
+              <div style={styles.toggleInfo}>
+                <span style={{ fontSize: '1.1rem' }}>⭐</span>
+                <div>
+                  <p style={styles.toggleTitle}>Producto destacado</p>
+                  <p style={styles.toggleSub}>Aparecerá en el filtro de "Destacados"</p>
+                </div>
+              </div>
+              <div style={{
+                ...styles.toggle,
+                background: form.featured ? '#f59e0b' : '#d1d5db',
+              }}>
+                <div style={{
+                  ...styles.toggleThumb,
+                  transform: form.featured ? 'translateX(20px)' : 'translateX(2px)',
+                }} />
+              </div>
             </div>
           </div>
 
@@ -609,6 +623,56 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.95rem',
     outline: 'none',
     boxShadow: '0 2px 4px rgba(15,23,42,0.01)',
+  },
+  discountPreview: {
+    fontSize: '0.82rem',
+    color: '#16a34a',
+    fontWeight: 700,
+  },
+  toggleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '0.85rem 1rem',
+    borderRadius: '10px',
+    border: '1px solid',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    userSelect: 'none',
+  },
+  toggleInfo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.75rem',
+  },
+  toggleTitle: {
+    margin: 0,
+    fontWeight: 700,
+    fontSize: '0.9rem',
+    color: 'var(--text-main)',
+  },
+  toggleSub: {
+    margin: 0,
+    fontSize: '0.78rem',
+    color: 'var(--text-muted)',
+  },
+  toggle: {
+    width: '44px',
+    height: '24px',
+    borderRadius: '12px',
+    position: 'relative',
+    transition: 'background 0.2s',
+    flexShrink: 0,
+  },
+  toggleThumb: {
+    position: 'absolute',
+    top: '2px',
+    width: '20px',
+    height: '20px',
+    borderRadius: '50%',
+    background: '#fff',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
+    transition: 'transform 0.2s',
   },
   tagGroup: {
     display: 'flex',

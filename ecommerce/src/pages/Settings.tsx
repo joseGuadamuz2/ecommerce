@@ -237,7 +237,7 @@ export default function Settings() {
             <button style={{ ...styles.previewBtn, background: accentColor }}>Botón de ejemplo</button>
             <span style={{ ...styles.previewPrice, color: accentColor }}>₡12,500</span>
             <span style={{ ...styles.previewBadge, background: accentColor + '20', color: accentColor }}>
-              En stock
+              Destacado
             </span>
           </div>
         </div>

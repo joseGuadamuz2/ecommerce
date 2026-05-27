@@ -53,7 +53,7 @@ export default function ProductDetail() {
     const msg = encodeURIComponent(
       `Hola! Me interesa este producto:\n` +
       `*${product.name}*\n` +
-      `Precio: ₡${product.price.toLocaleString()}\n` +
+      `Precio: ₡${(product.discount_percent > 0 ? product.price * (1 - product.discount_percent / 100) : product.price).toLocaleString(undefined, { maximumFractionDigits: 0 })}\n` +
       `Código: ${product.id.slice(0, 8).toUpperCase()}\n` +
       `Ver producto: ${productUrl}`
     )
@@ -137,7 +137,7 @@ export default function ProductDetail() {
                 )}
               </>
             ) : (
-              <span style={{ fontSize: '4rem' }}>👕</span>
+              <span style={{ fontSize: '4rem' }}>📦</span>
             )}
           </div>
 
@@ -169,21 +169,24 @@ export default function ProductDetail() {
           </p>
 
           <h1 style={styles.name}>{product.name}</h1>
-          <p style={styles.price}>₡{product.price.toLocaleString()}</p>
+          {(() => {
+            const disc = product.discount_percent ?? 0
+            const final = disc > 0 ? product.price * (1 - disc / 100) : product.price
+            return (
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <p style={styles.price}>₡{final.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                {disc > 0 && (
+                  <>
+                    <span style={styles.originalPrice}>₡{product.price.toLocaleString()}</span>
+                    <span style={styles.discountTag}>-{disc}%</span>
+                  </>
+                )}
+              </div>
+            )
+          })()}
 
           {product.description && (
             <p style={styles.description}>{product.description}</p>
-          )}
-
-          {product.sizes?.length > 0 && (
-            <div style={styles.section}>
-              <p style={styles.label}>Tallas disponibles</p>
-              <div style={styles.tags}>
-                {product.sizes.map((s: string) => (
-                  <span key={s} style={styles.tag}>{s}</span>
-                ))}
-              </div>
-            </div>
           )}
 
           {product.colors?.length > 0 && (
@@ -316,6 +319,8 @@ const styles: Record<string, React.CSSProperties> = {
     alignSelf: 'flex-start',
   },
   name: { fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-main)', margin: 0 },
+  originalPrice: { fontSize: '1rem', color: 'var(--text-muted)', textDecoration: 'line-through', fontWeight: 500 },
+  discountTag: { fontSize: '0.85rem', background: '#fef2f2', color: '#ef4444', fontWeight: 800, padding: '3px 10px', borderRadius: '20px', border: '1px solid #fecaca' },
   price: { fontSize: '1.4rem', fontWeight: 800, color: 'var(--accent)', margin: 0 },
   description: { color: 'var(--text-muted)', lineHeight: '1.6', margin: 0 },
   section: { display: 'flex', flexDirection: 'column', gap: '0.4rem' },

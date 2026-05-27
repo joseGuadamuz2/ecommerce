@@ -10,9 +10,10 @@ export interface Product {
   name: string
   description: string
   price: number
+  discount_percent: number
+  featured: boolean
   sizes: string[]
   colors: string[]
-  stock: number
   created_at: string
   product_images?: ProductImage[]
 }

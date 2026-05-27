@@ -18,14 +18,14 @@ export default function AdminDashboard() {
 
   const totalProducts = products.length
   const totalImages = products.reduce((acc, p) => acc + (p.product_images?.length || 0), 0)
-  const sinStock = products.filter(p => p.stock === 0).length
-  const totalStock = products.reduce((acc, p) => acc + (p.stock || 0), 0)
+  const destacados = products.filter(p => p.featured).length
+  const conDescuento = products.filter(p => (p.discount_percent ?? 0) > 0).length
 
   const stats = [
     { label: 'Productos', value: totalProducts, icon: Package, color: '#4f46e5', bg: '#ede9fe' },
     { label: 'Imágenes', value: totalImages, icon: Image, color: '#0891b2', bg: '#e0f2fe' },
-    { label: 'Sin stock', value: sinStock, icon: AlertTriangle, color: '#d97706', bg: '#fef3c7' },
-    { label: 'Unidades totales', value: totalStock, icon: TrendingUp, color: '#059669', bg: '#d1fae5' },
+    { label: 'Destacados', value: destacados, icon: AlertTriangle, color: '#d97706', bg: '#fef3c7' },
+    { label: 'Con descuento', value: conDescuento, icon: TrendingUp, color: '#059669', bg: '#d1fae5' },
   ]
 
   return (
@@ -83,21 +83,23 @@ export default function AdminDashboard() {
                     {img ? (
                       <img src={img.url} alt={p.name} style={styles.recentImg} />
                     ) : (
-                      <span style={{ fontSize: '1.5rem' }}>👕</span>
+                      <span style={{ fontSize: '1.5rem' }}>📦</span>
                     )}
                   </div>
                   <div style={styles.recentInfo}>
                     <p style={styles.recentName}>{p.name}</p>
                     <p style={styles.recentPrice}>₡{p.price.toLocaleString()}</p>
                   </div>
-                  <span style={{
-                    ...styles.stockBadge,
-                    background: p.stock > 0 ? 'var(--success-light)' : 'var(--danger-light)',
-                    color: p.stock > 0 ? 'var(--success)' : 'var(--danger)',
-                    borderColor: p.stock > 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                  }}>
-                    {p.stock > 0 ? `${p.stock} uds` : 'Agotado'}
-                  </span>
+                  {p.discount_percent > 0 && (
+                    <span style={{ ...styles.stockBadge, background: '#fef2f2', color: '#ef4444', borderColor: '#fecaca' }}>
+                      -{p.discount_percent}%
+                    </span>
+                  )}
+                  {p.featured && (
+                    <span style={{ ...styles.stockBadge, background: '#fefce8', color: '#d97706', borderColor: '#fde68a' }}>
+                      ⭐
+                    </span>
+                  )}
                 </div>
               )
             })}

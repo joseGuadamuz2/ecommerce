@@ -3,15 +3,17 @@ import { useNavigate } from 'react-router-dom'
 import { getProducts, getSettings } from '../services/productService'
 import type { Product } from '../types/product'
 import ProductCard from '../components/ProductCard'
-import {Settings, Search, SlidersHorizontal, FileDown, Store } from 'lucide-react'
+import { Settings, Search, SlidersHorizontal, FileDown, Store } from 'lucide-react'
 import { generateCatalogPDF } from '../services/pdfService'
+
+type FilterType = 'all' | 'featured' | 'discount' | 'recent'
 
 export default function Catalog() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
-  const [filterStock, setFilterStock] = useState('all')
+  const [activeFilter, setActiveFilter] = useState<FilterType>('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [whatsappBase, setWhatsappBase] = useState('')
   const [storeSettings, setStoreSettings] = useState<any>(null)
@@ -37,10 +39,17 @@ export default function Catalog() {
     const matchesSearch =
       p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (p.description && p.description.toLowerCase().includes(searchTerm.toLowerCase()))
-    const matchesStock =
-      filterStock === 'all' ? true :
-      filterStock === 'available' ? p.stock > 0 : p.stock === 0
-    return matchesSearch && matchesStock
+
+    let matchesFilter = true
+    if (activeFilter === 'featured') matchesFilter = !!(p as any).featured
+    else if (activeFilter === 'discount') matchesFilter = ((p as any).discount_percent ?? 0) > 0
+    else if (activeFilter === 'recent') {
+      const created = new Date(p.created_at).getTime()
+      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000 // últimos 30 días
+      matchesFilter = created >= cutoff
+    }
+
+    return matchesSearch && matchesFilter
   })
 
   const totalPages = Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE)
@@ -54,8 +63,8 @@ export default function Catalog() {
     setCurrentPage(1)
   }
 
-  const handleFilterChange = (val: string) => {
-    setFilterStock(val)
+  const handleFilterChange = (val: FilterType) => {
+    setActiveFilter(val)
     setCurrentPage(1)
   }
 
@@ -75,6 +84,13 @@ export default function Catalog() {
   const accentColor = storeSettings?.accent_color || 'var(--accent)'
   const storeName = storeSettings?.store_name || 'Mi Tienda'
   const productLabel = storeSettings?.product_label || 'productos'
+
+  const FILTERS: { key: FilterType; label: string; icon: string }[] = [
+    { key: 'all', label: 'Todos', icon: '🛍️' },
+    { key: 'featured', label: 'Destacados', icon: '⭐' },
+    { key: 'discount', label: 'Con descuento', icon: '🏷️' },
+    { key: 'recent', label: 'Recientes', icon: '🆕' },
+  ]
 
   return (
     <div style={styles.page}>
@@ -165,13 +181,12 @@ export default function Catalog() {
 
           <div style={styles.filterOptions}>
             <SlidersHorizontal size={15} color="var(--text-muted)" style={{ marginRight: '0.25rem' }} />
-            {(['all', 'available', 'outOfStock'] as const).map(f => {
-              const labels = { all: 'Todos', available: 'Disponibles', outOfStock: 'Agotados' }
-              const active = filterStock === f
+            {FILTERS.map(f => {
+              const active = activeFilter === f.key
               return (
                 <button
-                  key={f}
-                  onClick={() => handleFilterChange(f)}
+                  key={f.key}
+                  onClick={() => handleFilterChange(f.key)}
                   style={{
                     ...styles.filterTab,
                     background: active ? accentColor : 'transparent',
@@ -179,7 +194,8 @@ export default function Catalog() {
                     borderColor: active ? accentColor : 'var(--border-color)',
                   }}
                 >
-                  {labels[f]}
+                  <span style={{ marginRight: '0.3rem' }}>{f.icon}</span>
+                  {f.label}
                 </button>
               )
             })}
@@ -210,7 +226,6 @@ export default function Catalog() {
               ))}
             </div>
 
-            {/* Paginación */}
             {totalPages > 1 && (
               <div style={styles.pagination}>
                 <button
@@ -281,248 +296,37 @@ export default function Catalog() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  page: {
-    minHeight: '100vh',
-    background: 'var(--bg-main)',
-    display: 'flex',
-    flexDirection: 'column',
-  },
-  header: {
-    background: 'var(--glass-bg)',
-    backdropFilter: 'blur(12px)',
-    WebkitBackdropFilter: 'blur(12px)',
-    borderBottom: '1px solid var(--glass-border)',
-    position: 'sticky',
-    top: 0,
-    zIndex: 100,
-    boxShadow: '0 1px 10px rgba(15, 23, 42, 0.03)',
-  },
-  headerInner: {
-    maxWidth: '1200px',
-    margin: '0 auto',
-    padding: '0.85rem 1.5rem',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  logo: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.6rem',
-  },
-  logoIconBg: {
-    padding: '0.4rem',
-    borderRadius: '8px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoText: {
-    fontSize: '1.2rem',
-    fontWeight: 800,
-    letterSpacing: '-0.3px',
-    color: 'var(--text-main)',
-  },
-  adminBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.4rem',
-    padding: '0.5rem 0.95rem',
-    background: '#fff',
-    border: '1px solid var(--border-color)',
-    borderRadius: '10px',
-    cursor: 'pointer',
-    fontSize: '0.85rem',
-    fontWeight: 600,
-    color: 'var(--text-main)',
-    boxShadow: '0 2px 6px rgba(15, 23, 42, 0.02)',
-  },
-  hero: {
-    background: 'linear-gradient(135deg, #0b0f19 0%, #18182b 100%)',
-    position: 'relative',
-    color: '#fff',
-    textAlign: 'center',
-    padding: '5rem 1.5rem',
-    overflow: 'hidden',
-  },
-  heroOverlay: {
-    position: 'absolute',
-    inset: 0,
-    pointerEvents: 'none',
-  },
-  heroContent: {
-    position: 'relative',
-    maxWidth: '700px',
-    margin: '0 auto',
-    zIndex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '0.75rem',
-  },
-  heroLabel: {
-    fontSize: '0.78rem',
-    fontWeight: 700,
-    letterSpacing: '1.5px',
-    textTransform: 'uppercase',
-    padding: '4px 14px',
-    borderRadius: '20px',
-  },
-  heroTitle: {
-    fontSize: '2.8rem',
-    fontWeight: 800,
-    margin: 0,
-    letterSpacing: '-1px',
-    lineHeight: '1.15',
-  },
-  heroSub: {
-    fontSize: '1.1rem',
-    color: '#94a3b8',
-    margin: 0,
-    fontWeight: 400,
-    lineHeight: '1.5',
-  },
-  main: {
-    maxWidth: '1200px',
-    margin: '0 auto',
-    padding: '2.5rem 1.5rem',
-    flex: 1,
-    width: '100%',
-    boxSizing: 'border-box',
-  },
-  filterBar: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: '1.5rem',
-    marginBottom: '2rem',
-    flexWrap: 'wrap',
-  },
-  searchBox: {
-    position: 'relative',
-    flex: '1 1 300px',
-    maxWidth: '450px',
-  },
-  searchIcon: {
-    position: 'absolute',
-    left: '14px',
-    top: '50%',
-    transform: 'translateY(-50%)',
-  },
-  searchInput: {
-    width: '100%',
-    padding: '0.65rem 1rem 0.65rem 2.6rem',
-    borderRadius: '12px',
-    border: '1px solid var(--border-color)',
-    fontSize: '0.92rem',
-    outline: 'none',
-    background: '#fff',
-    boxShadow: '0 2px 6px rgba(15, 23, 42, 0.02)',
-    boxSizing: 'border-box',
-  },
-  filterOptions: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.4rem',
-  },
-  filterTab: {
-    padding: '0.4rem 0.95rem',
-    borderRadius: '8px',
-    border: '1px solid',
-    cursor: 'pointer',
-    fontSize: '0.85rem',
-    fontWeight: 600,
-  },
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
-    gap: '1.75rem',
-  },
-  loadingWrapper: {
-    textAlign: 'center',
-    padding: '6rem 1.5rem',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '1rem',
-  },
-  spinner: {
-    width: '32px',
-    height: '32px',
-    border: '3px solid rgba(99, 102, 241, 0.1)',
-    borderTopColor: 'var(--accent)',
-    borderRadius: '50%',
-    animation: 'spin 0.8s linear infinite',
-  },
-  loadingText: {
-    color: 'var(--text-muted)',
-    fontSize: '0.92rem',
-    fontWeight: 500,
-  },
-  emptyState: {
-    textAlign: 'center',
-    padding: '5rem 2rem',
-    background: '#fff',
-    borderRadius: '16px',
-    border: '1px solid var(--border-color)',
-    boxShadow: 'var(--card-shadow)',
-  },
-  pagination: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '0.4rem',
-    marginTop: '2.5rem',
-    flexWrap: 'wrap',
-  },
-  pageBtn: {
-    minWidth: '36px',
-    height: '36px',
-    padding: '0 0.6rem',
-    borderRadius: '8px',
-    border: '1px solid var(--border-color)',
-    background: '#fff',
-    color: 'var(--text-main)',
-    fontSize: '0.9rem',
-    fontWeight: 500,
-    cursor: 'pointer',
-    transition: 'all 0.15s',
-  },
-  pageInfo: {
-    marginLeft: '0.5rem',
-    fontSize: '0.82rem',
-    color: 'var(--text-muted)',
-    fontWeight: 500,
-  },
-  footer: {
-    borderTop: '1px solid var(--border-color)',
-    background: '#fff',
-    padding: '2rem 1.5rem',
-    marginTop: '3rem',
-  },
-  footerInner: {
-    maxWidth: '1200px',
-    margin: '0 auto',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: '1rem',
-  },
-  footerLogo: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.4rem',
-  },
-  footerLogoText: {
-    fontWeight: 700,
-    color: 'var(--text-main)',
-    fontSize: '1rem',
-  },
-  footerCopy: {
-    color: 'var(--text-muted)',
-    fontSize: '0.82rem',
-    margin: 0,
-  },
+  page: { minHeight: '100vh', background: 'var(--bg-main)', display: 'flex', flexDirection: 'column' },
+  header: { background: 'var(--glass-bg)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', borderBottom: '1px solid var(--glass-border)', position: 'sticky', top: 0, zIndex: 100, boxShadow: '0 1px 10px rgba(15, 23, 42, 0.03)' },
+  headerInner: { maxWidth: '1200px', margin: '0 auto', padding: '0.85rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  logo: { display: 'flex', alignItems: 'center', gap: '0.6rem' },
+  logoIconBg: { padding: '0.4rem', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  logoText: { fontSize: '1.2rem', fontWeight: 800, letterSpacing: '-0.3px', color: 'var(--text-main)' },
+  adminBtn: { display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.5rem 0.95rem', background: '#fff', border: '1px solid var(--border-color)', borderRadius: '10px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)', boxShadow: '0 2px 6px rgba(15, 23, 42, 0.02)' },
+  hero: { background: 'linear-gradient(135deg, #0b0f19 0%, #18182b 100%)', position: 'relative', color: '#fff', textAlign: 'center', padding: '5rem 1.5rem', overflow: 'hidden' },
+  heroOverlay: { position: 'absolute', inset: 0, pointerEvents: 'none' },
+  heroContent: { position: 'relative', maxWidth: '700px', margin: '0 auto', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' },
+  heroLabel: { fontSize: '0.78rem', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase', padding: '4px 14px', borderRadius: '20px' },
+  heroTitle: { fontSize: '2.8rem', fontWeight: 800, margin: 0, letterSpacing: '-1px', lineHeight: '1.15' },
+  heroSub: { fontSize: '1.1rem', color: '#94a3b8', margin: 0, fontWeight: 400, lineHeight: '1.5' },
+  main: { maxWidth: '1200px', margin: '0 auto', padding: '2.5rem 1.5rem', flex: 1, width: '100%', boxSizing: 'border-box' },
+  filterBar: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1.5rem', marginBottom: '2rem', flexWrap: 'wrap' },
+  searchBox: { position: 'relative', flex: '1 1 300px', maxWidth: '450px' },
+  searchIcon: { position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)' },
+  searchInput: { width: '100%', padding: '0.65rem 1rem 0.65rem 2.6rem', borderRadius: '12px', border: '1px solid var(--border-color)', fontSize: '0.92rem', outline: 'none', background: '#fff', boxShadow: '0 2px 6px rgba(15, 23, 42, 0.02)', boxSizing: 'border-box' },
+  filterOptions: { display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' },
+  filterTab: { display: 'flex', alignItems: 'center', padding: '0.4rem 0.85rem', borderRadius: '8px', border: '1px solid', cursor: 'pointer', fontSize: '0.83rem', fontWeight: 600, whiteSpace: 'nowrap' },
+  grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1.75rem' },
+  loadingWrapper: { textAlign: 'center', padding: '6rem 1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' },
+  spinner: { width: '32px', height: '32px', border: '3px solid rgba(99, 102, 241, 0.1)', borderTopColor: 'var(--accent)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' },
+  loadingText: { color: 'var(--text-muted)', fontSize: '0.92rem', fontWeight: 500 },
+  emptyState: { textAlign: 'center', padding: '5rem 2rem', background: '#fff', borderRadius: '16px', border: '1px solid var(--border-color)', boxShadow: 'var(--card-shadow)' },
+  pagination: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', marginTop: '2.5rem', flexWrap: 'wrap' },
+  pageBtn: { minWidth: '36px', height: '36px', padding: '0 0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: '#fff', color: 'var(--text-main)', fontSize: '0.9rem', fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s' },
+  pageInfo: { marginLeft: '0.5rem', fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 500 },
+  footer: { borderTop: '1px solid var(--border-color)', background: '#fff', padding: '2rem 1.5rem', marginTop: '3rem' },
+  footerInner: { maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' },
+  footerLogo: { display: 'flex', alignItems: 'center', gap: '0.4rem' },
+  footerLogoText: { fontWeight: 700, color: 'var(--text-main)', fontSize: '1rem' },
+  footerCopy: { color: 'var(--text-muted)', fontSize: '0.82rem', margin: 0 },
 }

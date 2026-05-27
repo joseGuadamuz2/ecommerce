@@ -121,20 +121,22 @@ export default function ProductList() {
                 <div style={styles.mobileImgBox}>
                   {img
                     ? <img src={img.url} alt={p.name} style={styles.mobileImg} />
-                    : <span style={{ fontSize: '1.5rem' }}>👕</span>
+                    : <span style={{ fontSize: '1.5rem' }}>📦</span>
                   }
                 </div>
                 <div style={styles.mobileInfo}>
                   <p style={styles.mobileName}>{p.name}</p>
                   <p style={styles.mobilePrice}>₡{p.price.toLocaleString()}</p>
-                  <span style={{
-                    ...styles.stockBadge,
-                    background: p.stock > 0 ? 'var(--success-light)' : 'var(--danger-light)',
-                    color: p.stock > 0 ? 'var(--success)' : 'var(--danger)',
-                    borderColor: p.stock > 0 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                  }}>
-                    {p.stock > 0 ? `${p.stock} uds` : 'Agotado'}
-                  </span>
+                  {p.discount_percent > 0 && (
+                    <span style={{ ...styles.stockBadge, background: '#fef2f2', color: '#ef4444', borderColor: '#fecaca' }}>
+                      -{p.discount_percent}%
+                    </span>
+                  )}
+                  {p.featured && (
+                    <span style={{ ...styles.stockBadge, background: '#fefce8', color: '#d97706', borderColor: '#fde68a' }}>
+                      ⭐ Destacado
+                    </span>
+                  )}
                 </div>
                 <div style={styles.mobileActions}>
                   <button
@@ -162,8 +164,7 @@ export default function ProductList() {
               <tr>
                 <th style={styles.th}>Producto</th>
                 <th style={styles.th}>Precio</th>
-                <th style={styles.th}>Stock</th>
-                <th style={styles.th}>Tallas</th>
+                <th style={styles.th}>Descuento</th>
                 <th style={styles.th}>Acciones</th>
               </tr>
             </thead>
@@ -177,25 +178,15 @@ export default function ProductList() {
                         <div style={styles.thumbBox}>
                           {img
                             ? <img src={img.url} alt={p.name} style={styles.thumb} />
-                            : <span style={{ fontSize: '1.1rem' }}>👕</span>
+                            : <span style={{ fontSize: '1.1rem' }}>📦</span>
                           }
                         </div>
                         <span style={styles.productName}>{p.name}</span>
                       </div>
                     </td>
                     <td style={styles.td}>₡{p.price.toLocaleString()}</td>
-                    <td style={styles.td}>
-                      <span style={{
-                        ...styles.stockBadge,
-                        background: p.stock > 0 ? 'var(--success-light)' : 'var(--danger-light)',
-                        color: p.stock > 0 ? 'var(--success)' : 'var(--danger)',
-                        borderColor: p.stock > 0 ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
-                      }}>
-                        {p.stock > 0 ? `${p.stock} uds` : 'Agotado'}
-                      </span>
-                    </td>
                     <td style={{ ...styles.td, color: 'var(--text-muted)', fontSize: '0.88rem' }}>
-                      {p.sizes?.join(', ') || '—'}
+                      {p.discount_percent > 0 ? `-${p.discount_percent}%` : '—'}
                     </td>
                     <td style={styles.td}>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>

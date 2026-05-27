@@ -1,20 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { getProductById, getSettings } from '../services/productService'
-import { ArrowLeft, MessageCircle } from 'lucide-react'
+import { ArrowLeft, MessageCircle, X, ZoomIn } from 'lucide-react'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 export default function ProductDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const isMobile = useIsMobile()
   const [product, setProduct] = useState<any>(null)
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [whatsappBase, setWhatsappBase] = useState('')
 
-  // Zoom state
+  // Desktop zoom
   const [zoomed, setZoomed] = useState(false)
   const [lensPos, setLensPos] = useState({ x: 0, y: 0 })
   const imgBoxRef = useRef<HTMLDivElement>(null)
+
+  // Mobile lightbox
+  const [lightboxOpen, setLightboxOpen] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -31,6 +36,16 @@ export default function ProductDetail() {
       setLoading(false)
     })
   }, [id])
+
+  // Bloquear scroll cuando el lightbox está abierto
+  useEffect(() => {
+    if (lightboxOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [lightboxOpen])
 
   const handleWhatsApp = () => {
     if (!whatsappBase || !product) return
@@ -54,7 +69,6 @@ export default function ProductDetail() {
     const rect = box.getBoundingClientRect()
     let x = e.clientX - rect.left
     let y = e.clientY - rect.top
-    // Clamp so lens stays inside
     x = Math.max(LENS_SIZE / 2, Math.min(rect.width - LENS_SIZE / 2, x))
     y = Math.max(LENS_SIZE / 2, Math.min(rect.height - LENS_SIZE / 2, y))
     setLensPos({ x, y })
@@ -81,16 +95,28 @@ export default function ProductDetail() {
         <div style={styles.gallery}>
           <div
             ref={imgBoxRef}
-            style={{ ...styles.mainImgBox, cursor: zoomed ? 'zoom-out' : 'zoom-in' }}
-            onMouseEnter={() => setZoomed(true)}
-            onMouseLeave={() => setZoomed(false)}
-            onMouseMove={handleMouseMove}
+            style={{
+              ...styles.mainImgBox,
+              cursor: isMobile ? 'pointer' : (zoomed ? 'zoom-out' : 'zoom-in'),
+            }}
+            onClick={() => { if (isMobile && selectedImage) setLightboxOpen(true) }}
+            onMouseEnter={() => { if (!isMobile) setZoomed(true) }}
+            onMouseLeave={() => { if (!isMobile) setZoomed(false) }}
+            onMouseMove={!isMobile ? handleMouseMove : undefined}
           >
             {selectedImage ? (
               <>
                 <img src={selectedImage} alt={product.name} style={styles.mainImg} />
-                {/* Zoom lens */}
-                {zoomed && (
+
+                {/* Ícono de lupa en móvil */}
+                {isMobile && (
+                  <div style={styles.zoomHint}>
+                    <ZoomIn size={16} color="#fff" />
+                  </div>
+                )}
+
+                {/* Lupa en desktop */}
+                {!isMobile && zoomed && (
                   <div
                     style={{
                       position: 'absolute',
@@ -173,7 +199,6 @@ export default function ProductDetail() {
             </div>
           )}
 
-          {/* Botón WhatsApp — sin restricción de stock */}
           <button
             onClick={handleWhatsApp}
             disabled={!whatsappBase}
@@ -188,6 +213,51 @@ export default function ProductDetail() {
           </button>
         </div>
       </div>
+
+      {/* Lightbox móvil */}
+      {lightboxOpen && selectedImage && (
+        <div
+          style={styles.lightboxOverlay}
+          onClick={() => setLightboxOpen(false)}
+        >
+          {/* Botón cerrar */}
+          <button
+            style={styles.lightboxClose}
+            onClick={(e) => { e.stopPropagation(); setLightboxOpen(false) }}
+          >
+            <X size={22} color="#fff" />
+          </button>
+
+          {/* Imagen */}
+          <img
+            src={selectedImage}
+            alt={product.name}
+            style={styles.lightboxImg}
+            onClick={(e) => e.stopPropagation()}
+          />
+
+          {/* Miniaturas en el lightbox si hay varias */}
+          {sortedImages.length > 1 && (
+            <div style={styles.lightboxThumbs} onClick={(e) => e.stopPropagation()}>
+              {sortedImages.map((img: any) => (
+                <img
+                  key={img.id}
+                  src={img.url}
+                  alt=""
+                  onClick={() => setSelectedImage(img.url)}
+                  style={{
+                    ...styles.lightboxThumb,
+                    border: selectedImage === img.url
+                      ? '2px solid #fff'
+                      : '2px solid rgba(255,255,255,0.3)',
+                    opacity: selectedImage === img.url ? 1 : 0.6,
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -216,6 +286,19 @@ const styles: Record<string, React.CSSProperties> = {
     userSelect: 'none',
   },
   mainImg: { width: '100%', height: '100%', objectFit: 'cover' },
+  zoomHint: {
+    position: 'absolute',
+    bottom: '10px',
+    right: '10px',
+    background: 'rgba(0,0,0,0.45)',
+    borderRadius: '50%',
+    width: '32px',
+    height: '32px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    pointerEvents: 'none',
+  },
   thumbs: { display: 'flex', gap: '0.5rem', flexWrap: 'wrap' },
   thumb: {
     width: '64px', height: '64px', borderRadius: '8px',
@@ -261,5 +344,53 @@ const styles: Record<string, React.CSSProperties> = {
     boxShadow: '0 4px 14px rgba(37, 211, 102, 0.35)',
     marginTop: '0.5rem',
     transition: 'opacity 0.2s',
+  },
+  // Lightbox
+  lightboxOverlay: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(0,0,0,0.92)',
+    zIndex: 1000,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '1rem',
+  },
+  lightboxClose: {
+    position: 'absolute',
+    top: '1rem',
+    right: '1rem',
+    background: 'rgba(255,255,255,0.15)',
+    border: 'none',
+    borderRadius: '50%',
+    width: '40px',
+    height: '40px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    zIndex: 10,
+  },
+  lightboxImg: {
+    maxWidth: '100%',
+    maxHeight: '75vh',
+    objectFit: 'contain',
+    borderRadius: '12px',
+  },
+  lightboxThumbs: {
+    display: 'flex',
+    gap: '0.5rem',
+    marginTop: '1rem',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  lightboxThumb: {
+    width: '56px',
+    height: '56px',
+    borderRadius: '8px',
+    objectFit: 'cover',
+    cursor: 'pointer',
+    transition: 'opacity 0.15s, border 0.15s',
   },
 }

@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../services/supabaseClient'
-import { LayoutDashboard, Package, LogOut, Menu, X, UserStar, Settings, Store } from 'lucide-react'
+import { LayoutDashboard, Package, LogOut, Menu, X, UserStar, Settings, Store, Users } from 'lucide-react'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 const navItems = [
   { label: 'Dashboard', path: '/admin', icon: LayoutDashboard },
+  { label: 'Usuarios', path: '/admin/usuarios', icon: Users },
   { label: 'Productos', path: '/admin/productos', icon: Package },
   { label: 'Configuración', path: '/admin/configuracion', icon: Settings },
 ]

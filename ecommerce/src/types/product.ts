@@ -14,7 +14,6 @@ export interface Product {
   featured: boolean
   is_active: boolean
   sizes: string[]
-  colors: string[]
   created_at: string
   product_images?: ProductImage[]
 }

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import AdminLayout from '../components/AdminLayout'
-import { getSettings, updateSettings, uploadLogo } from '../services/productService'
+import { uploadLogo } from '../services/businessService'
+import { updateBusiness } from '../services/businessService'
+import { useAuth } from '../context/AuthContext'
 import { Save, CheckCircle, Upload, X } from 'lucide-react'
 
 const COUNTRIES = [
@@ -37,7 +39,7 @@ function hexToRgb(hex: string) {
 }
 
 export default function Settings() {
-  const [settingsId, setSettingsId]       = useState('')
+  const { business } = useAuth()
   const [countryCode, setCountryCode]     = useState('506')
   const [number, setNumber]               = useState('')
   const [storeName, setStoreName]         = useState('')
@@ -55,29 +57,28 @@ export default function Settings() {
   const logoInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    getSettings().then(data => {
-      setSettingsId(data.id)
-      setCountryCode(data.whatsapp_country_code || '506')
-      setNumber(data.whatsapp_number || '')
-      setStoreName(data.store_name || '')
-      setLogoUrl(data.store_logo_url || null)
-      setAccentColor(data.accent_color || '#6366f1')
-      setBannerLabel(data.banner_label || '')
-      setBannerTitle(data.banner_title || '')
-      setBannerSubtitle(data.banner_subtitle || '')
-      setProductLabel(data.product_label || '')
+    if (business) {
+      setCountryCode(business.whatsapp_country_code || '506')
+      setNumber(business.whatsapp_number || '')
+      setStoreName(business.name || '')
+      setLogoUrl(business.logo_url || null)
+      setAccentColor(business.accent_color || '#6366f1')
+      setBannerLabel(business.banner_label || '')
+      setBannerTitle(business.banner_title || '')
+      setBannerSubtitle(business.banner_subtitle || '')
+      setProductLabel(business.product_label || '')
       setLoading(false)
-    })
-  }, [])
+    }
+  }, [business])
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file) return
+    if (!file || !business?.id) return
     setUploadingLogo(true)
     try {
       const url = await uploadLogo(file)
       setLogoUrl(url)
-      await updateSettings(settingsId, { store_logo_url: url })
+      await updateBusiness(business.id, { logo_url: url })
     } catch {
       setError('No se pudo subir el logo')
     } finally {
@@ -87,20 +88,22 @@ export default function Settings() {
   }
 
   const handleRemoveLogo = async () => {
+    if (!business?.id) return
     setLogoUrl(null)
-    await updateSettings(settingsId, { store_logo_url: null })
+    await updateBusiness(business.id, { logo_url: null })
   }
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!number.trim()) { setError('Ingresá un número de WhatsApp'); return }
+    if (!business?.id) return
     setSaving(true)
     setError('')
     try {
-      await updateSettings(settingsId, {
+      await updateBusiness(business.id, {
         whatsapp_country_code: countryCode,
         whatsapp_number: number.trim(),
-        store_name: storeName.trim(),
+        name: storeName.trim(),
         accent_color: accentColor,
         banner_label: bannerLabel.trim(),
         banner_title: bannerTitle.trim(),

@@ -2,11 +2,10 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Swal from 'sweetalert2'
 import AdminLayout from '../components/AdminLayout'
-import { createProduct, getProductById, updateProduct, uploadImage, deleteProductImage, setMainImage } from '../services/productService'
+import { createProduct, getProductById, updateProduct, uploadImage, deleteProductImage, setMainImage, saveProductImage } from '../services/productService'
 import { processImage } from '../hooks/useImageProcessor'
+import { useAuth } from '../context/AuthContext'
 import { ArrowLeft, Save, Upload, Trash2, Star } from 'lucide-react'
-
-const COLORS = ['Blanco', 'Negro', 'Azul', 'Rojo', 'Verde', 'Gris', 'Amarillo']
 
 interface LocalImage {
   file: File
@@ -17,6 +16,7 @@ interface LocalImage {
 export default function ProductForm() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { business } = useAuth()
   const isEditing = !!id
 
   const [loading, setLoading] = useState(false)
@@ -30,39 +30,32 @@ export default function ProductForm() {
     price: '',
     discount_percent: '0',
     featured: false,
-    colors: [] as string[],
   })
 
   const [savedImages, setSavedImages] = useState<any[]>([])
   const [dragIndex, setDragIndex] = useState<number | null>(null)
-  const [isMobile, setIsMobile] = useState<boolean>(false)
 
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth <= 600)
-    check()
-    window.addEventListener('resize', check)
-    return () => window.removeEventListener('resize', check)
-  }, [])
-
-  useEffect(() => {
-    if (isEditing) {
+    if (isEditing && business) {
       setLoading(true)
-      getProductById(id).then(product => {
+      getProductById(id, business.id).then(product => {
         setForm({
           name: product.name,
           description: product.description || '',
           price: String(product.price),
           discount_percent: String(product.discount_percent ?? 0),
           featured: product.featured ?? false,
-          colors: product.colors || [],
         })
         const imgs = [...(product.product_images || [])]
         imgs.sort((a: any, b: any) => (b.is_main ? 1 : 0) - (a.is_main ? 1 : 0))
         setSavedImages(imgs)
         setLoading(false)
+      }).catch(() => {
+        setError('No se pudo cargar el producto')
+        setLoading(false)
       })
     }
-  }, [id])
+  }, [id, business])
 
   const handleDragStart = (index: number) => setDragIndex(index)
 
@@ -115,9 +108,6 @@ export default function ProductForm() {
     }
   }
 
-  const toggleItem = (list: string[], item: string) =>
-    list.includes(item) ? list.filter(i => i !== item) : [...list, item]
-
   const handleAddImages = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     const newImages: LocalImage[] = files
@@ -125,7 +115,7 @@ export default function ProductForm() {
       .map((file, i) => ({
         file,
         preview: URL.createObjectURL(file),
-        isMain: localImages.length === 0 && i === 0,
+        isMain: localImages.length === 0 && savedImages.length === 0 && i === 0,
       }))
 
     if (files.some(f => f.size > 20 * 1024 * 1024)) {
@@ -161,8 +151,20 @@ export default function ProductForm() {
     )
   }
 
+  const handleSetMainSaved = (index: number) => {
+    setSavedImages(prev =>
+      prev.map((img, i) => ({ ...img, is_main: i === index }))
+    )
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    if (!business) {
+      setError('No se pudo obtener tu negocio')
+      return
+    }
+
     setSaving(true)
     setError('')
 
@@ -175,36 +177,52 @@ export default function ProductForm() {
         featured: form.featured,
         is_active: true,
         sizes: [],
-        colors: form.colors,
       }
 
       let productId = id
 
       if (isEditing) {
-        await updateProduct(id, payload)
+        await updateProduct(id, payload, business.id)
       } else {
-        const created = await createProduct(payload)
+        const created = await createProduct(payload, business.id)
         productId = created.id
       }
 
+      // Guardar nuevas imágenes
+      let imageErrors = false
       for (const img of localImages) {
-        const processed = await processImage(img.file, {
-          maxSize: 1200,
-          quality: 0.82,
-          format: 'image/webp',
-        })
-        const url = await uploadImage(processed, productId!)
-        await import('../services/productService').then(m =>
-          m.saveProductImage(productId!, url, img.isMain)
-        )
+        try {
+          const processed = await processImage(img.file, {
+            maxSize: 1200,
+            quality: 0.82,
+            format: 'image/webp',
+          })
+          const url = await uploadImage(processed, productId!)
+          await saveProductImage(productId!, url, img.isMain)
+        } catch (imgErr) {
+          console.error('Error al guardar imagen:', imgErr)
+          imageErrors = true
+        }
+      }
+
+      // Actualizar imagen principal si fue modificada
+      try {
+        if (isEditing && savedImages[0]) {
+          const mainImage = savedImages.find(img => img.is_main)
+          if (mainImage && mainImage.id !== savedImages[0].id) {
+            await setMainImage(mainImage.id, productId!)
+          }
+        }
+      } catch (err) {
+        console.error('Error al actualizar imagen principal:', err)
       }
 
       await Swal.fire({
         title: '¡Guardado!',
         text: isEditing
           ? 'Producto actualizado correctamente.'
-          : 'Producto creado correctamente.',
-        icon: 'success',
+          : 'Producto creado correctamente.' + (imageErrors ? ' (algunas imágenes no se guardaron)' : ''),
+        icon: imageErrors ? 'warning' : 'success',
         timer: 1800,
         showConfirmButton: false,
         confirmButtonColor: '#6366f1',
@@ -212,9 +230,10 @@ export default function ProductForm() {
 
       navigate('/admin/productos')
     } catch (err: any) {
+      console.error('Error al guardar producto:', err)
       Swal.fire({
         title: 'Error',
-        text: 'No se pudo guardar el producto. Intentá de nuevo.',
+        text: err?.message || 'No se pudo guardar el producto. Intentá de nuevo.',
         icon: 'error',
         confirmButtonColor: '#6366f1',
       })
@@ -257,70 +276,37 @@ export default function ProductForm() {
             <span style={styles.uploadHint}>PNG, JPG hasta 20MB · Se recortan en cuadrado y comprimen automáticamente</span>
           </label>
 
-          {localImages.length > 0 && (
-            <div style={styles.grid}>
-              {localImages.map((img, i) => (
-                <div key={i} style={styles.imgCard}>
-                  <img src={img.preview} alt="" style={styles.img} />
-                  {img.isMain && <div style={styles.mainBadge}>Principal</div>}
-                  <div style={styles.imgActions}>
-                    {!img.isMain && (
-                      <button
-                        type="button"
-                        style={styles.starBtn}
-                        onClick={() => handleSetMainLocal(i)}
-                        title="Marcar como principal"
-                      >
-                        <Star size={14} />
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      style={styles.deleteImgBtn}
-                      onClick={() => handleRemoveLocal(i)}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
+          {/* Imágenes guardadas (editando) */}
           {savedImages.length > 0 && (
-            <>
-              <p style={styles.dragHint}>
-                Imágenes actuales · <strong>arrastrá para reordenar</strong> · la primera es la principal
-              </p>
+            <div style={styles.subsection}>
+              <h3 style={styles.subsectionTitle}>Imágenes actuales</h3>
               <div style={styles.grid}>
-                {savedImages.map((img, index) => (
+                {savedImages.map((img, i) => (
                   <div
                     key={img.id}
+                    style={styles.imgCard}
                     draggable
-                    onDragStart={() => handleDragStart(index)}
+                    onDragStart={() => handleDragStart(i)}
+                    onDrop={() => handleDrop(i)}
                     onDragOver={handleDragOver}
-                    onDrop={() => handleDrop(index)}
-                    onDragEnd={() => setDragIndex(null)}
-                    style={{
-                      ...styles.imgCard,
-                      opacity: dragIndex === index ? 0.35 : 1,
-                      cursor: 'grab',
-                      outline: dragIndex !== null && dragIndex !== index
-                        ? '2px dashed var(--accent)'
-                        : '2px solid transparent',
-                      transform: dragIndex === index ? 'scale(0.96)' : 'scale(1)',
-                      transition: 'opacity 0.2s, outline 0.15s, transform 0.15s',
-                    }}
                   >
                     <img src={img.url} alt="" style={styles.img} />
-                    {index === 0 && <div style={styles.mainBadge}>Principal</div>}
-                    {index !== 0 && <div style={styles.orderBadge}>{index + 1}</div>}
+                    {img.is_main && <div style={styles.mainBadge}>Principal</div>}
                     <div style={styles.imgActions}>
+                      {!img.is_main && (
+                        <button
+                          type="button"
+                          style={styles.starBtn}
+                          onClick={() => handleSetMainSaved(i)}
+                          title="Marcar como principal"
+                        >
+                          <Star size={14} />
+                        </button>
+                      )}
                       <button
                         type="button"
                         style={styles.deleteImgBtn}
                         onClick={() => handleRemoveSaved(img.id, img.url)}
-                        title="Eliminar imagen"
                       >
                         <Trash2 size={14} />
                       </button>
@@ -328,20 +314,56 @@ export default function ProductForm() {
                   </div>
                 ))}
               </div>
-            </>
+            </div>
+          )}
+
+          {/* Imágenes nuevas */}
+          {localImages.length > 0 && (
+            <div style={styles.subsection}>
+              <h3 style={styles.subsectionTitle}>Nuevas imágenes</h3>
+              <div style={styles.grid}>
+                {localImages.map((img, i) => (
+                  <div key={i} style={styles.imgCard}>
+                    <img src={img.preview} alt="" style={styles.img} />
+                    {img.isMain && <div style={styles.mainBadge}>Principal</div>}
+                    <div style={styles.imgActions}>
+                      {!img.isMain && (
+                        <button
+                          type="button"
+                          style={styles.starBtn}
+                          onClick={() => handleSetMainLocal(i)}
+                          title="Marcar como principal"
+                        >
+                          <Star size={14} />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        style={styles.deleteImgBtn}
+                        onClick={() => handleRemoveLocal(i)}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 
-        {/* ── SECCIÓN INFO ── */}
+        {/* ── INFORMACIÓN ── */}
         <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>📝 Información del producto</h2>
+          <h2 style={styles.sectionTitle}>📋 Información</h2>
 
           <div style={styles.field}>
-            <label style={styles.label}>Nombre *</label>
+            <label style={styles.label}>Nombre del producto *</label>
             <input
-              style={styles.input}
+              type="text"
               value={form.name}
               onChange={e => setForm({ ...form, name: e.target.value })}
+              style={styles.input}
+              placeholder="Ej: Camiseta Premium"
               required
             />
           </div>
@@ -349,95 +371,82 @@ export default function ProductForm() {
           <div style={styles.field}>
             <label style={styles.label}>Descripción</label>
             <textarea
-              style={{ ...styles.input, minHeight: '100px', resize: 'vertical' }}
               value={form.description}
               onChange={e => setForm({ ...form, description: e.target.value })}
+              style={{ ...styles.input, minHeight: '100px', resize: 'vertical' }}
+              placeholder="Detalles sobre el producto..."
             />
           </div>
+        </div>
 
-          <div style={{
-            ...styles.row,
-            flexDirection: isMobile ? 'column' : 'row',
-          }}>
-            <div style={{ ...styles.field, flex: 1 }}>
-              <label style={styles.label}>Precio (₡) *</label>
+        {/* ── PRECIOS ── */}
+        <div style={styles.section}>
+          <h2 style={styles.sectionTitle}>💰 Precios y Promoción</h2>
+
+          <div style={styles.row}>
+            <div style={styles.field}>
+              <label style={styles.label}>Precio *</label>
               <input
-                style={styles.input}
                 type="number"
-                min="0"
-                step="0.01"
                 value={form.price}
                 onChange={e => setForm({ ...form, price: e.target.value })}
+                style={styles.input}
+                placeholder="0.00"
+                step="0.01"
+                min="0"
                 required
               />
             </div>
-            <div style={{ ...styles.field, flex: 1 }}>
+
+            <div style={styles.field}>
               <label style={styles.label}>Descuento (%)</label>
               <input
-                style={styles.input}
                 type="number"
-                min="0"
-                max="99"
                 value={form.discount_percent}
                 onChange={e => setForm({ ...form, discount_percent: e.target.value })}
+                style={styles.input}
+                placeholder="0"
+                min="0"
+                max="100"
               />
-              {discountVal > 0 && originalPrice > 0 && (
-                <span style={styles.discountPreview}>
-                  Precio final: ₡{finalPrice.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                </span>
-              )}
             </div>
           </div>
 
-          {/* Toggle Destacado */}
-          <div style={styles.field}>
-            <label style={styles.label}>Opciones</label>
+          {discountVal > 0 && (
+            <p style={styles.discountPreview}>
+              💚 Precio final: ₡{finalPrice.toFixed(2)} (ahorrás ₡{(originalPrice - finalPrice).toFixed(2)})
+            </p>
+          )}
+        </div>
+
+        {/* ── OPCIONES ── */}
+        <div style={styles.section}>
+          <h2 style={styles.sectionTitle}>⭐ Opciones</h2>
+
+          <div
+            style={{
+              ...styles.toggleRow,
+              borderColor: form.featured ? 'var(--accent)' : 'var(--border-color)',
+              background: form.featured ? 'rgba(99, 102, 241, 0.04)' : '#fff',
+            }}
+            onClick={() => setForm({ ...form, featured: !form.featured })}
+          >
+            <div style={styles.toggleInfo}>
+              <div style={styles.toggleTitle}>Destacado</div>
+              <p style={styles.toggleSub}>Mostrar en sección de destacados</p>
+            </div>
             <div
               style={{
-                ...styles.toggleRow,
-                background: form.featured ? '#fef9c3' : '#f8fafc',
-                borderColor: form.featured ? '#fbbf24' : 'var(--border-color)',
-              }}
-              onClick={() => setForm({ ...form, featured: !form.featured })}
-            >
-              <div style={styles.toggleInfo}>
-                <span style={{ fontSize: '1.1rem' }}>⭐</span>
-                <div>
-                  <p style={styles.toggleTitle}>Producto destacado</p>
-                  <p style={styles.toggleSub}>Aparecerá en el filtro de "Destacados"</p>
-                </div>
-              </div>
-              <div style={{
                 ...styles.toggle,
-                background: form.featured ? '#f59e0b' : '#d1d5db',
-              }}>
-                <div style={{
+                background: form.featured ? 'var(--accent)' : '#ddd',
+              }}
+            >
+              <div
+                style={{
                   ...styles.toggleThumb,
-                  transform: form.featured ? 'translateX(20px)' : 'translateX(2px)',
-                }} />
-              </div>
-            </div>
-          </div>
-
-          <div style={styles.field}>
-            <label style={styles.label}>Colores disponibles</label>
-            <div style={styles.tagGroup}>
-              {COLORS.map(color => (
-                <button
-                  key={color}
-                  type="button"
-                  onClick={() => setForm({ ...form, colors: toggleItem(form.colors, color) })}
-                  style={{
-                    ...styles.tag,
-                    background: form.colors.includes(color) ? 'var(--accent)' : '#f1f5f9',
-                    color: form.colors.includes(color) ? '#fff' : 'var(--text-muted)',
-                    boxShadow: form.colors.includes(color) ? '0 4px 10px rgba(99, 102, 241, 0.2)' : 'none',
-                    borderColor: form.colors.includes(color) ? 'var(--accent)' : 'transparent',
-                  }}
-                >
-                  {color}
-                </button>
-              ))}
+                  transform: form.featured ? 'translateX(20px)' : 'translateX(0)',
+                }}
+              />
             </div>
           </div>
         </div>
@@ -505,6 +514,17 @@ const styles: Record<string, React.CSSProperties> = {
     paddingBottom: '0.65rem',
     borderBottom: '1px solid var(--border-color)',
   },
+  subsection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  subsectionTitle: {
+    fontSize: '0.9rem',
+    fontWeight: 600,
+    color: 'var(--text-muted)',
+    margin: 0,
+  },
   uploadArea: {
     display: 'flex',
     flexDirection: 'column',
@@ -528,11 +548,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-muted)',
     fontSize: '0.78rem',
   },
-  dragHint: {
-    fontSize: '0.82rem',
-    color: 'var(--text-muted)',
-    margin: '0.25rem 0',
-  },
   grid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
@@ -545,6 +560,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid var(--border-color)',
     aspectRatio: '1',
     boxShadow: '0 2px 6px rgba(15,23,42,0.02)',
+    cursor: 'grab',
   },
   img: {
     width: '100%',
@@ -562,21 +578,6 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '20px',
     fontWeight: 700,
     boxShadow: '0 2px 6px rgba(99,102,241,0.3)',
-  },
-  orderBadge: {
-    position: 'absolute',
-    top: '6px',
-    left: '6px',
-    background: 'rgba(0,0,0,0.45)',
-    color: '#fff',
-    fontSize: '0.65rem',
-    width: '20px',
-    height: '20px',
-    borderRadius: '50%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontWeight: 700,
   },
   imgActions: {
     position: 'absolute',
@@ -643,8 +644,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   toggleInfo: {
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: '0.75rem',
+    flexDirection: 'column',
   },
   toggleTitle: {
     margin: 0,
@@ -674,20 +676,6 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#fff',
     boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
     transition: 'transform 0.2s',
-  },
-  tagGroup: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '0.5rem',
-  },
-  tag: {
-    padding: '0.45rem 1rem',
-    borderRadius: '20px',
-    border: '1px solid var(--border-color)',
-    cursor: 'pointer',
-    fontSize: '0.85rem',
-    fontWeight: 600,
-    transition: 'all 0.2s',
   },
   saveBtn: {
     display: 'flex',

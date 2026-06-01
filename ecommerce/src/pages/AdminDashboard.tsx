@@ -1,20 +1,24 @@
 import { useEffect, useState } from 'react'
 import AdminLayout from '../components/AdminLayout'
-import { getProducts } from '../services/productService'
+import { getProductsByBusiness } from '../services/productService'
 import { Package, Image, AlertTriangle, TrendingUp } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 
 export default function AdminDashboard() {
   const [products, setProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
+  const { business } = useAuth()
 
   useEffect(() => {
-    getProducts().then(data => {
-      setProducts(data)
-      setLoading(false)
-    })
-  }, [])
+    if (business?.id) {
+      getProductsByBusiness(business.id).then(data => {
+        setProducts(data)
+        setLoading(false)
+      })
+    }
+  }, [business?.id])
 
   const totalProducts = products.length
   const destacados = products.filter(p => p.featured).length
@@ -77,7 +81,7 @@ export default function AdminDashboard() {
                 <div
                   key={p.id}
                   style={styles.recentCard}
-                  onClick={() => navigate(`/admin/productos/editar/${p.id}`)}
+                  onClick={() => navigate(`/producto/${p.id}`)}
                 >
                   <div style={styles.recentImgBox}>
                     {img ? (

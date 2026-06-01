@@ -4,9 +4,10 @@ import { MessageCircle } from 'lucide-react'
 interface Props {
   product: any
   whatsappBase?: string
+  onNavigate?: () => void
 }
 
-export default function ProductCard({ product, whatsappBase }: Props) {
+export default function ProductCard({ product, whatsappBase, onNavigate }: Props) {
   const navigate = useNavigate()
   const mainImage = product.product_images?.find((img: any) => img.is_main)
   const fallback = product.product_images?.[0]
@@ -16,6 +17,14 @@ export default function ProductCard({ product, whatsappBase }: Props) {
   const finalPrice = discount > 0
     ? product.price * (1 - discount / 100)
     : product.price
+
+  const handleCardClick = () => {
+    if (onNavigate) {
+      onNavigate()
+    } else {
+      navigate(`/producto/${product.id}`)
+    }
+  }
 
   const handleWhatsApp = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -34,7 +43,7 @@ export default function ProductCard({ product, whatsappBase }: Props) {
   return (
     <div
       className="product-card"
-      onClick={() => navigate(`/producto/${product.id}`)}
+      onClick={handleCardClick}
     >
       <div style={styles.imgWrapper}>
         {imageUrl ? (

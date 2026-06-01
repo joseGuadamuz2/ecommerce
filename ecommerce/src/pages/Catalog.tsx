@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getProducts, getSettings } from '../services/productService'
+import { getProductsByBusiness } from '../services/productService'
+import { useAuth } from '../context/AuthContext'
 import type { Product } from '../types/product'
 import ProductCard from '../components/ProductCard'
 import { Settings, Search, SlidersHorizontal, FileDown, Store } from 'lucide-react'
@@ -17,24 +18,28 @@ export default function Catalog() {
   const [activeFilter, setActiveFilter] = useState<FilterType>('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [whatsappBase, setWhatsappBase] = useState('')
-  const [storeSettings, setStoreSettings] = useState<any>(null)
+  const { business } = useAuth()
   const PRODUCTS_PER_PAGE = 8
   const navigate = useNavigate()
 
   useEffect(() => {
-    Promise.all([getProducts(), getSettings()])
-      .then(([prods, settings]) => {
+    if (!business?.id) {
+      setLoading(false)
+      return
+    }
+    
+    getProductsByBusiness(business.id)
+      .then((prods) => {
         setProducts(prods)
-        const code = settings?.whatsapp_country_code || '506'
-        const number = settings?.whatsapp_number?.replace(/\s/g, '') || ''
+        const code = business?.whatsapp_country_code || '506'
+        const number = business?.whatsapp_number?.replace(/\s/g, '') || ''
         setWhatsappBase(`${code}${number}`)
-        setStoreSettings(settings)
-        if (settings?.accent_color) {
-          document.documentElement.style.setProperty('--accent', settings.accent_color)
+        if (business?.accent_color) {
+          document.documentElement.style.setProperty('--accent', business.accent_color)
         }
       })
       .finally(() => setLoading(false))
-  }, [])
+  }, [business?.id])
 
   const filteredProducts = products.filter(p => {
     // Ocultar productos deshabilitados
@@ -75,9 +80,8 @@ export default function Catalog() {
   const handleGeneratePDF = async () => {
     setExporting(true)
     try {
-      const settings = await getSettings()
       const storeUrl = window.location.origin
-      await generateCatalogPDF(filteredProducts as any, settings, storeUrl)
+      await generateCatalogPDF(filteredProducts as any, business, storeUrl)
     } catch (error) {
       console.error('Error generando PDF:', error)
     } finally {
@@ -85,9 +89,9 @@ export default function Catalog() {
     }
   }
 
-  const accentColor = storeSettings?.accent_color || 'var(--accent)'
-  const storeName = storeSettings?.store_name || 'Mi Tienda'
-  const productLabel = storeSettings?.product_label || 'productos'
+  const accentColor = business?.accent_color || 'var(--accent)'
+  const storeName = business?.name || 'Mi Tienda'
+  const productLabel = business?.product_label || 'productos'
 
   const FILTERS: { key: FilterType; label: string; icon: string }[] = [
     { key: 'all', label: 'Todos', icon: '🛍️' },
@@ -105,9 +109,9 @@ export default function Catalog() {
 
           {/* Logo */}
           <div style={styles.logo}>
-            {storeSettings?.store_logo_url ? (
+            {business?.logo_url ? (
               <img
-                src={storeSettings.store_logo_url}
+                src={business.logo_url}
                 alt={storeName}
                 style={{ height: '36px', maxWidth: '150px', objectFit: 'contain' }}
               />
@@ -149,20 +153,20 @@ export default function Catalog() {
           background: `radial-gradient(circle at top right, ${accentColor}26, transparent 60%)`,
         }} />
         <div style={styles.heroContent}>
-          {storeSettings?.banner_label && (
+          {business?.banner_label && (
             <span style={{
               ...styles.heroLabel,
               background: accentColor + '22',
               color: accentColor,
             }}>
-              {storeSettings.banner_label}
+              {business.banner_label}
             </span>
           )}
           <h1 style={styles.heroTitle}>
-            {storeSettings?.banner_title || storeName}
+            {business?.banner_title || storeName}
           </h1>
-          {storeSettings?.banner_subtitle && (
-            <p style={styles.heroSub}>{storeSettings.banner_subtitle}</p>
+          {business?.banner_subtitle && (
+            <p style={styles.heroSub}>{business.banner_subtitle}</p>
           )}
         </div>
       </div>
@@ -279,9 +283,9 @@ export default function Catalog() {
       <footer style={styles.footer}>
         <div style={styles.footerInner}>
           <div style={styles.footerLogo}>
-            {storeSettings?.store_logo_url ? (
+            {business?.logo_url ? (
               <img
-                src={storeSettings.store_logo_url}
+                src={business.logo_url}
                 alt={storeName}
                 style={{ height: '24px', maxWidth: '100px', objectFit: 'contain' }}
               />

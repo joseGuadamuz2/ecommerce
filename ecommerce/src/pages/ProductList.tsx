@@ -2,12 +2,13 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Swal from 'sweetalert2'
 import AdminLayout from '../components/AdminLayout'
-import { getProducts, deleteProduct, updateProduct, getSettings } from '../services/productService'
+import { getProductsByBusiness, deleteProduct, updateProduct } from '../services/productService'
 import type { Product } from '../types/product'
 import { Plus, Pencil, Trash2, FileDown, Eye, EyeOff } from 'lucide-react'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { generateCatalogPDF } from '../services/pdfService'
 import PdfLoadingOverlay from '../components/PdfLoadingOverlay'
+import { useAuth } from '../context/AuthContext'
 
 export default function ProductList() {
   const [products, setProducts] = useState<Product[]>([])
@@ -16,18 +17,20 @@ export default function ProductList() {
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const navigate = useNavigate()
   const isMobile = useIsMobile()
+  const { business } = useAuth()
 
   const fetchProducts = async () => {
+    if (!business?.id) return
     setLoading(true)
     try {
-      const data = await getProducts()
+      const data = await getProductsByBusiness(business.id)
       setProducts(data)
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => { fetchProducts() }, [])
+  useEffect(() => { fetchProducts() }, [business?.id])
 
   const handleDelete = async (id: string) => {
     const result = await Swal.fire({
@@ -79,9 +82,8 @@ export default function ProductList() {
   const handleExportPDF = async () => {
     setExporting(true)
     try {
-      const settings = await getSettings()
       const storeUrl = window.location.origin
-      await generateCatalogPDF(products as any, settings, storeUrl)
+      await generateCatalogPDF(products as any, business, storeUrl)
     } catch (err) {
       console.error('Error generando PDF:', err)
       Swal.fire({

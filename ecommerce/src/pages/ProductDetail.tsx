@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { getProductById, getSettings } from '../services/productService'
+import { getProductById } from '../services/productService'
+import { useAuth } from '../context/AuthContext'
 import { ArrowLeft, MessageCircle, X, ZoomIn } from 'lucide-react'
 import { useIsMobile } from '../hooks/useIsMobile'
 
@@ -8,6 +9,7 @@ export default function ProductDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const isMobile = useIsMobile()
+  const { business } = useAuth()
   const [product, setProduct] = useState<any>(null)
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -22,20 +24,25 @@ export default function ProductDetail() {
   const [lightboxOpen, setLightboxOpen] = useState(false)
 
   useEffect(() => {
-    if (!id) return
-    Promise.all([
-      getProductById(id),
-      getSettings(),
-    ]).then(([p, settings]) => {
-      setProduct(p)
-      const main = p.product_images?.find((i: any) => i.is_main) || p.product_images?.[0]
-      setSelectedImage(main?.url || null)
-      const code = settings?.whatsapp_country_code || '506'
-      const number = settings?.whatsapp_number?.replace(/\s/g, '') || ''
-      setWhatsappBase(`${code}${number}`)
+    if (!id) {
       setLoading(false)
-    })
-  }, [id])
+      return
+    }
+    if (!business?.id) {
+      setLoading(false)
+      return
+    }
+    getProductById(id, business.id)
+      .then((p) => {
+        setProduct(p)
+        const main = p.product_images?.find((i: any) => i.is_main) || p.product_images?.[0]
+        setSelectedImage(main?.url || null)
+        const code = business?.whatsapp_country_code || '506'
+        const number = business?.whatsapp_number?.replace(/\s/g, '') || ''
+        setWhatsappBase(`${code}${number}`)
+        setLoading(false)
+      })
+  }, [id, business?.id])
 
   // Bloquear scroll cuando el lightbox está abierto
   useEffect(() => {
